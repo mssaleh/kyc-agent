@@ -1,0 +1,191 @@
+URL: https://watchman.nxu.ae/search
+
+---
+
+QUERY-STRING PARAMETERS:
+
+q
+string
+Search across Name, Alt Names, and SDN Address fields for all available sanctions lists. Entries may be returned in all response sub-objects.
+Examples: John Doe
+
+name
+string
+Name which could correspond to an entry on the SDN, Denied Persons, Sectoral Sanctions Identifications, or BIS Entity List sanctions lists. Alt names are also searched.
+Examples: Jane Smith
+
+address
+string
+Physical address which could correspond to a human on the SDN list. Only Address results will be returned.
+Examples: 123 83rd Ave
+
+city
+string
+City name as desginated by SDN guidelines. Only Address results will be returned.
+Examples: USA
+
+state
+string
+State name as desginated by SDN guidelines. Only Address results will be returned.
+Examples: USA
+
+country
+string
+Country name as desginated by SDN guidelines. Only Address results will be returned.
+Examples: USA
+
+altName
+string
+Alternate name which could correspond to a human on the SDN list. Only Alt name results will be returned.
+Examples: Jane Smith
+
+id
+string
+ID value often found in remarks property of an SDN. Takes the form of 'No. NNNNN' as an alphanumeric value.
+Examples: 10517860
+
+minMatch
+float
+Match percentage that search query must obtain for results to be returned.
+Examples: 0.95
+
+limit
+integer
+Maximum results returned by a search. Results are sorted by their match percentage in decending order.
+Examples: 25
+
+---
+
+Example Code:
+
+import requests
+
+url = "https://watchman.nxu.ae/search"
+
+querystring = {"q":"Saymoni Hamati","country":"Syria","minMatch":"0.75"}
+
+payload = ""
+headers = {"User-Agent": "insomnia/10.3.0"}
+
+response = requests.request("GET", url, data=payload, headers=headers, params=querystring)
+
+print(response.text)
+
+---
+
+Example Response:
+
+{
+	"SDNs": [],
+	"altNames": [
+		{
+			"entityID": "10485",
+			"alternateID": "10374",
+			"alternateType": "aka",
+			"alternateName": "AL-SHAYBANI, Hamid",
+			"alternateRemarks": "",
+			"match": 0.7811857698714597,
+			"matchedName": "al shaybani hamid"
+		},
+		{
+			"entityID": "16436",
+			"alternateID": "24809",
+			"alternateType": "aka",
+			"alternateName": "SAZMANE SANAYE HAVAI",
+			"alternateRemarks": "",
+			"match": 0.7510235532724946,
+			"matchedName": "sazmane sanaye havai"
+		}
+	],
+	"addresses": [],
+	"deniedPersons": [],
+	"bisEntities": [],
+	"militaryEndUsers": [],
+	"sectoralSanctions": [],
+	"unverifiedCSL": [],
+	"nonproliferationSanctions": [],
+	"foreignSanctionsEvaders": [],
+	"palestinianLegislativeCouncil": [],
+	"captaList": [],
+	"itarDebarred": [],
+	"nonSDNChineseMilitaryIndustrialComplex": [],
+	"nonSDNMenuBasedSanctionsList": [],
+	"euConsolidatedSanctionsList": [],
+	"ukConsolidatedSanctionsList": [
+		{
+			"Addresses": [
+				"107 Sepahbod Gharani Avenue, Tehran",
+				"3th km Karaj Special Road, Aviation Industries Boulevard, Tehran",
+				"Ave. Sepahbod Gharani PO Box 15815/1775, Tehran",
+				"Karaj Special Road, Mehrabad Airport, Tehran",
+				"Sepahbod Gharani 36, Tehran"
+			],
+			"Countries": [
+				"Iran"
+			],
+			"CountriesOfBirth": null,
+			"DatesOfBirth": null,
+			"GroupID": 11203,
+			"GroupType": "Entity",
+			"LastUpdates": [
+				"04/03/2022"
+			],
+			"ListedDates": [
+				"27/07/2010"
+			],
+			"Names": [
+				"ARMED FORCES AVIATION INDUSTRIES ORGANIZATION",
+				"IAIO",
+				"IRAN AVIATION INDUSTRIES ORGANIZATION",
+				"IRANIAN AVIATION INDUSTRIES ORGANIZATION (IAIO)",
+				"SAZMANE SANAYE HAYAI"
+			],
+			"Nationalities": null,
+			"OtherInfos": [
+				"(UK Sanctions List Ref):INU0079. (UK Statement of Reasons):MODAFL organisation responsible for planning and managing Iran's military aviation industry. (Type of entity):Enterprise (Subsidiaries):Fajr Aviation Composite Industries. Ghods/Qods Aviation Industry. Iran Aircraft Industries (ACI)/SAHA/SIA. Iran Aircraft Manufacturing Company/HESA/HASA. Iran Helicopter Support and Renewal(IHSRC)/PANHA. Shahid Basir Industry (Parent company):11203"
+			],
+			"PostalCodes": null,
+			"SanctionListDates": [
+				"31/12/2020"
+			],
+			"Titles": null,
+			"TownsOfBirth": null,
+			"match": 0.7510235532724946,
+			"matchedName": "sazmane sanaye hayai"
+		}
+	],
+	"ukSanctionsList": [
+		{
+			"AddressCountries": [
+				"Iran"
+			],
+			"Addresses": [
+				"107 Sepahbod Gharani Avenue, Tehran, Iran",
+				"3th km Karaj Special Road, Aviation Industries Boulevard, Tehran, Iran",
+				"Ave. Sepahbod Gharani PO Box 15815/1775, Tehran, Iran",
+				"Karaj Special Road, Mehrabad Airport, Tehran, Iran",
+				"Sepahbod Gharani 36, Tehran, Iran"
+			],
+			"CountryOfBirth": "",
+			"EntityType": "Entity",
+			"LastUpdated": "04/03/2022",
+			"NameTitle": "Primary name",
+			"Names": [
+				"Iranian Aviation Industries Organization (IAIO)",
+				"Armed Forces Aviation Industries Organization",
+				"Iran Aviation Industries Organization",
+				"Sazmane Sanaye Hayai"
+			],
+			"NonLatinScriptNames": null,
+			"OFSIGroupID": "11203",
+			"StateLocalities": [
+				"Tehran"
+			],
+			"UNReferenceNumber": "",
+			"UniqueID": "INU0079",
+			"match": 0.7510235532724946,
+			"matchedName": "sazmane sanaye hayai"
+		}
+	],
+	"refreshedAt": "2025-02-02T16:31:37.941227128Z"
+}

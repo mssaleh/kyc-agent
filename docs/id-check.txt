@@ -1,0 +1,40 @@
+URL: https://idcheck.nxu.ae/api/id
+
+---
+
+Example Code:
+
+import requests
+
+url = "https://idcheck.nxu.ae/api/id"
+
+payload = "-----011000010111000001101001\r\nContent-Disposition: form-data; name=\"image\"; filename=\"58d0cff9-a0a3-4e6e-9f55-5af5f7fea94d.jpeg\"\r\nContent-Type: image/jpeg\r\n\r\n\r\n-----011000010111000001101001--\r\n"
+headers = {
+    "Content-Type": "multipart/form-data; boundary=---011000010111000001101001",
+    "User-Agent": "insomnia/10.3.0"
+}
+
+response = requests.request("POST", url, data=payload, headers=headers)
+
+print(response.text)
+
+---
+
+Example Response:
+
+{
+	"Date of Birth": "1976-01-18",
+	"Document Number": "000553101",
+	"Full Name": "KYOMUGISHA ELIZABETH",
+	"Given Names": "ELIZABETH",
+	"Issuing State Code": "UGA",
+	"Issuing State Name": "Uganda",
+	"Nationality": "Uganda",
+	"Nationality Code": "UGA",
+	"Personal Number": "CF760551019W1F",
+	"Sex": "F",
+	"Status": "Ok",
+	"Surname": "KYOMUGISHA"
+}
+
+

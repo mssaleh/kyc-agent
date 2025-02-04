@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+aiofiles
+pydantic
+requests
+openai
+aiohttp
+jinja2
+asyncio
+python-multipart
+python-dotenv
+pathlib
+fpdf

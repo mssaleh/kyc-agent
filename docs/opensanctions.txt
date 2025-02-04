@@ -1,0 +1,405 @@
+URL: https://api.opensanctions.org/match/default
+
+---
+
+Example Code:
+
+import requests
+
+url = "https://api.opensanctions.org/match/default"
+
+payload = {"queries": {"q1": {
+            "schema": "Person",
+            "properties": {
+                "name": ["Mohammed Saleh"],
+                "birthDate": ["1981-01-30"],
+                "nationality": ["Russia"]
+            }
+        }}}
+headers = {
+    "Content-Type": "application/json",
+    "Authorization": "key"
+}
+
+response = requests.request("POST", url, json=payload, headers=headers)
+
+print(response.text)
+
+---
+
+Example Response:
+
+{
+	"responses": {
+		"q1": {
+			"status": 200,
+			"results": [
+				{
+					"id": "usgsa-s4mr3rkcj",
+					"caption": "ALI MOHAMMAD SALAH",
+					"schema": "Person",
+					"properties": {
+						"name": [
+							"ALI MOHAMMAD SALAH"
+						],
+						"firstName": [
+							"ALI MOHAMMAD"
+						],
+						"topics": [
+							"sanction"
+						],
+						"alias": [
+							"ALI MUHAMMAD SALIH",
+							"ALI MOHAMAD SALEH",
+							"ALI MOHAMMAD SALAH",
+							"ALI MUHAMMAD ABD-AL-AMIR SALIH",
+							"ALI MOHAMED SALEH",
+							"ALI ABD-AL-AMIR MUHAMMAD SALIH",
+							"ALI MOHAMMAD SALEH"
+						],
+						"createdAt": [
+							"2012-06-28"
+						],
+						"lastName": [
+							"SALAH"
+						]
+					},
+					"datasets": [
+						"us_sam_exclusions"
+					],
+					"referents": [],
+					"target": true,
+					"first_seen": "2024-06-14T06:55:20",
+					"last_seen": "2025-01-20T07:55:05",
+					"last_change": "2024-09-10T07:55:01",
+					"score": 0.9,
+					"features": {
+						"person_name_jaro_winkler": 0.975,
+						"person_name_phonetic_match": 1.0
+					},
+					"match": true
+				},
+				{
+					"id": "usgsa-s4mr3rkn8",
+					"caption": "ALI MOHAMMAD SALAH",
+					"schema": "Person",
+					"properties": {
+						"name": [
+							"ALI MOHAMMAD SALAH"
+						],
+						"alias": [
+							"ALI MUHAMMAD SALIH",
+							"ALI MOHAMAD SALEH",
+							"ALI MOHAMMAD SALAH",
+							"ALI MUHAMMAD ABD-AL-AMIR SALIH",
+							"ALI MOHAMED SALEH",
+							"ALI ABD-AL-AMIR MUHAMMAD SALIH",
+							"ALI MOHAMMAD SALEH"
+						],
+						"topics": [
+							"sanction"
+						],
+						"lastName": [
+							"SALAH"
+						],
+						"createdAt": [
+							"2012-06-29"
+						],
+						"firstName": [
+							"ALI MOHAMMAD"
+						]
+					},
+					"datasets": [
+						"us_sam_exclusions"
+					],
+					"referents": [],
+					"target": true,
+					"first_seen": "2024-06-14T06:55:20",
+					"last_seen": "2025-01-20T07:55:05",
+					"last_change": "2024-09-10T07:55:01",
+					"score": 0.9,
+					"features": {
+						"person_name_jaro_winkler": 0.975,
+						"person_name_phonetic_match": 1.0
+					},
+					"match": true
+				},
+				{
+					"id": "usgsa-s4mr3rkcf",
+					"caption": "ALI MOHAMED SALEH",
+					"schema": "Person",
+					"properties": {
+						"firstName": [
+							"ALI MOHAMED"
+						],
+						"alias": [
+							"ALI MOHAMAD SALEH",
+							"ALI MOHAMMAD SALAH",
+							"ALI MOHAMMAD SALEH",
+							"ALI MUHAMMAD ABD-AL-AMIR SALIH",
+							"ALI MOHAMED SALEH",
+							"ALI ABD-AL-AMIR MUHAMMAD SALIH",
+							"ALI MUHAMMAD SALIH"
+						],
+						"name": [
+							"ALI MOHAMED SALEH"
+						],
+						"createdAt": [
+							"2012-06-28"
+						],
+						"topics": [
+							"sanction"
+						],
+						"lastName": [
+							"SALEH"
+						]
+					},
+					"datasets": [
+						"us_sam_exclusions"
+					],
+					"referents": [],
+					"target": true,
+					"first_seen": "2024-06-14T06:55:20",
+					"last_seen": "2025-01-20T07:55:05",
+					"last_change": "2024-09-10T07:55:01",
+					"score": 0.9,
+					"features": {
+						"person_name_jaro_winkler": 0.975,
+						"person_name_phonetic_match": 1.0
+					},
+					"match": true
+				},
+				{
+					"id": "usgsa-s4mr3rkn9",
+					"caption": "ALI MOHAMED SALEH",
+					"schema": "Person",
+					"properties": {
+						"alias": [
+							"ALI MUHAMMAD SALIH",
+							"ALI MOHAMAD SALEH",
+							"ALI MOHAMMAD SALAH",
+							"ALI MOHAMED SALEH",
+							"ALI MUHAMMAD ABD-AL-AMIR SALIH",
+							"ALI ABD-AL-AMIR MUHAMMAD SALIH",
+							"ALI MOHAMMAD SALEH"
+						],
+						"lastName": [
+							"SALEH"
+						],
+						"topics": [
+							"sanction"
+						],
+						"name": [
+							"ALI MOHAMED SALEH"
+						],
+						"createdAt": [
+							"2012-06-29"
+						],
+						"firstName": [
+							"ALI MOHAMED"
+						]
+					},
+					"datasets": [
+						"us_sam_exclusions"
+					],
+					"referents": [],
+					"target": true,
+					"first_seen": "2024-06-14T06:55:20",
+					"last_seen": "2025-01-20T07:55:05",
+					"last_change": "2024-09-10T07:55:01",
+					"score": 0.9,
+					"features": {
+						"person_name_jaro_winkler": 0.975,
+						"person_name_phonetic_match": 1.0
+					},
+					"match": true
+				},
+				{
+					"id": "usgsa-s4mr3rkch",
+					"caption": "ALI MOHAMMAD SALEH",
+					"schema": "Person",
+					"properties": {
+						"lastName": [
+							"SALEH"
+						],
+						"alias": [
+							"ALI MUHAMMAD SALIH",
+							"ALI MOHAMAD SALEH",
+							"ALI MOHAMMAD SALAH",
+							"ALI MOHAMED SALEH",
+							"ALI MUHAMMAD ABD-AL-AMIR SALIH",
+							"ALI ABD-AL-AMIR MUHAMMAD SALIH",
+							"ALI MOHAMMAD SALEH"
+						],
+						"name": [
+							"ALI MOHAMMAD SALEH"
+						],
+						"topics": [
+							"sanction"
+						],
+						"firstName": [
+							"ALI MOHAMMAD"
+						],
+						"createdAt": [
+							"2012-06-28"
+						]
+					},
+					"datasets": [
+						"us_sam_exclusions"
+					],
+					"referents": [],
+					"target": true,
+					"first_seen": "2024-06-14T06:55:20",
+					"last_seen": "2025-01-20T07:55:05",
+					"last_change": "2024-09-10T07:55:01",
+					"score": 0.9,
+					"features": {
+						"person_name_jaro_winkler": 0.975,
+						"person_name_phonetic_match": 1.0
+					},
+					"match": true
+				}
+			],
+			"total": {
+				"value": 34,
+				"relation": "eq"
+			},
+			"query": {
+				"id": null,
+				"schema": "Person",
+				"properties": {
+					"name": [
+						"Mohammed Saleh"
+					],
+					"birthDate": [
+						"1981-01-30"
+					],
+					"nationality": [
+						"ru"
+					]
+				}
+			}
+		}
+	},
+	"matcher": {
+		"name_literal_match": {
+			"description": "Two entities have the same name, without normalization applied to the name.",
+			"coefficient": 1.0,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/names.py#L116"
+		},
+		"person_name_jaro_winkler": {
+			"description": "Compare two persons' names using the Jaro-Winkler string similarity algorithm.",
+			"coefficient": 0.8,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/names.py#L54"
+		},
+		"person_name_phonetic_match": {
+			"description": "Two persons have similar names, using a phonetic algorithm.",
+			"coefficient": 0.9,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/phonetic.py#L61"
+		},
+		"name_fingerprint_levenshtein": {
+			"description": "Two non-person entities have similar fingerprinted names. This includes\n    simplifying entity type names (e.g. \"Limited\" -> \"Ltd\") and uses the\n    Damerau-Levensthein string distance algorithm.",
+			"coefficient": 0.9,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/names.py#L71"
+		},
+		"name_metaphone_match": {
+			"description": "Two entities (person and non-person) have similar names, using the metaphone\n    algorithm.",
+			"coefficient": 0.0,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/phonetic.py#L91"
+		},
+		"name_soundex_match": {
+			"description": "Two entities (person and non-person) have similar names, using the soundex\n    algorithm.",
+			"coefficient": 0.0,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/phonetic.py#L107"
+		},
+		"address_entity_match": {
+			"description": "Two address entities relate to similar addresses.",
+			"coefficient": 0.98,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/addresses.py#L18"
+		},
+		"crypto_wallet_address": {
+			"description": "Two cryptocurrency wallets have the same public key.",
+			"coefficient": 0.98,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L78"
+		},
+		"isin_security_match": {
+			"description": "Two securities have the same ISIN.",
+			"coefficient": 0.98,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L63"
+		},
+		"lei_code_match": {
+			"description": "Two entities have the same Legal Entity Identifier.",
+			"coefficient": 0.95,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L43"
+		},
+		"ogrn_code_match": {
+			"description": "Two entities have the same Russian company registration (OGRN) code.",
+			"coefficient": 0.95,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L53"
+		},
+		"vessel_imo_mmsi_match": {
+			"description": "Two vessels have the same IMO or MMSI identifier.",
+			"coefficient": 0.95,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L70"
+		},
+		"inn_code_match": {
+			"description": "Two entities have the same Russian tax identifier (INN).",
+			"coefficient": 0.95,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L58"
+		},
+		"bic_code_match": {
+			"description": "Two entities have the same SWIFT BIC.",
+			"coefficient": 0.95,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L48"
+		},
+		"identifier_match": {
+			"description": "Two entities have the same tax or registration identifier.",
+			"coefficient": 0.85,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L105"
+		},
+		"weak_alias_match": {
+			"description": "The query name is exactly the same as a result's weak alias.",
+			"coefficient": 0.8,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/names.py#L135"
+		},
+		"country_mismatch": {
+			"description": "Both entities are linked to different countries.",
+			"coefficient": -0.2,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/countries.py#L8"
+		},
+		"last_name_mismatch": {
+			"description": "The two persons have different last names.",
+			"coefficient": -0.2,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/names.py#L124"
+		},
+		"dob_year_disjoint": {
+			"description": "The birth date of the two entities is not the same.",
+			"coefficient": -0.15,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/dates.py#L65"
+		},
+		"dob_day_disjoint": {
+			"description": "The birth date of the two entities is not the same.",
+			"coefficient": -0.2,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/dates.py#L48"
+		},
+		"gender_mismatch": {
+			"description": "Both entities have a different gender associated with them.",
+			"coefficient": -0.2,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/gender.py#L7"
+		},
+		"orgid_disjoint": {
+			"description": "Two companies or organizations have different tax identifiers or registration\n    numbers.",
+			"coefficient": -0.2,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/identifiers.py#L89"
+		},
+		"numbers_mismatch": {
+			"description": "Find numbers in names and addresses and penalise different numbers.",
+			"coefficient": -0.1,
+			"url": "https://github.com/opensanctions/nomenklatura/blob/3.15.1/nomenklatura/matching/compare/multi.py#L8"
+		}
+	},
+	"limit": 5
+}
+
+
+

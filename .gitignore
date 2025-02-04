@@ -1,0 +1,51 @@
+# environment directories
+.venv/
+env/
+venv/
+ENV/
+.env
+Scripts/
+bin/
+Lib/
+lib/
+lib64
+Include/
+include/
+pyvenv.cfg
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution files
+build/
+dist/
+*.egg-info/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Jupyter Notebook shared data
+share/
+etc/
+# Jupyter Notebook configuration
+.jupyter/
+# Jupyter Notebook extensions
+.nbextensions/
+.custom.js
+
+# Additional
+uploads/
+reports/
+*.log
