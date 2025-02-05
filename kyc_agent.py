@@ -453,7 +453,7 @@ Format your final assessments with clear sections for:
         """Analyze identity, compliance, and media findings with the AI Assistant.
 
         Returns:
-            A tuple containing the risk level, a summary of findings, 
+            A tuple containing the risk level, a summary of findings,
             and recommendations from the AI Assistant.
         """
         logger.info(f"Starting AI analysis of findings for {identity.full_name}")

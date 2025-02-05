@@ -14,8 +14,8 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
-    UploadFile,
     Request,
+    UploadFile,
 )
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles  # added import for StaticFiles
@@ -196,6 +196,7 @@ class KYCService:
         self.app.post("/api/v1/kyc/analyze")(self.analyze_document)
         self.app.get("/api/v1/kyc/status/{job_id}")(self.get_job_status)
         self.app.get("/api/v1/kyc/report/{job_id}")(self.get_report)
+
         # Serve index and status pages:
         @self.app.get("/", response_class=HTMLResponse)
         async def index(request: Request):
@@ -205,7 +206,9 @@ class KYCService:
         async def status_page(request: Request, job_id: str):
             if job_id not in self.jobs:
                 raise HTTPException(status_code=404, detail="Job not found")
-            return templates.TemplateResponse("status.html", {"request": request, "job": self.jobs[job_id]})
+            return templates.TemplateResponse(
+                "status.html", {"request": request, "job": self.jobs[job_id]}
+            )
 
         # Health check
         self.app.get("/health")(self.health_check)
