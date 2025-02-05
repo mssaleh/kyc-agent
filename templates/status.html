@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KYC Analysis Service - Status</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-8">Document Analysis Status</h1>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <p class="text-lg"><strong>Job ID:</strong> {{ job.job_id }}</p>
+            <p class="mt-2"><strong>Status:</strong> {{ job.status }}</p>
+            
+            {% if job.error %}
+            <p class="mt-2 text-red-500">Error: {{ job.error }}</p>
+            {% endif %}
+            
+            {% if job.status == 'completed' %}
+            <div class="mt-4">
+                <a href="/api/v1/kyc/report/{{ job.job_id }}?format=json" class="text-blue-600 hover:underline">
+                    View JSON Report
+                </a>
+                <br />
+                <a href="/api/v1/kyc/report/{{ job.job_id }}?format=pdf" class="text-blue-600 hover:underline">
+                    Download PDF Report
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

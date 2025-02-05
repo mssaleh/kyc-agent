@@ -15,15 +15,16 @@ from fastapi import (
     HTTPException,
     Query,
     UploadFile,
+    Request,
 )
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles  # added import for StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from fastapi.staticfiles import StaticFiles  # added import for StaticFiles
 
 from kyc_agent import KYCAgent, KYCReport, ReportHandler, logger
 
+# Initialize Jinja2 templates
 templates = Jinja2Templates(directory="templates")
 
 # Initialize KYC agent (assuming environment variables are set)
@@ -168,11 +169,7 @@ class JobStatus(BaseModel):
             response["error"] = self.error
 
         if self.report:
-            response["report"] = {
-                "id": self.report.report_id,
-                "risk_level": self.report.risk_level,
-                "created_at": self.report.created_at,
-            }
+            response["report"] = self.report.model_dump()
 
         return response
 
@@ -196,9 +193,19 @@ class KYCService:
         self.app.mount("/static", StaticFiles(directory="static"), name="static")
 
         # API endpoints
-        self.app.post("/kyc/analyze")(self.analyze_document)
-        self.app.get("/kyc/status/{job_id}")(self.get_job_status)
-        self.app.get("/kyc/report/{job_id}")(self.get_report)
+        self.app.post("/api/v1/kyc/analyze")(self.analyze_document)
+        self.app.get("/api/v1/kyc/status/{job_id}")(self.get_job_status)
+        self.app.get("/api/v1/kyc/report/{job_id}")(self.get_report)
+        # Serve index and status pages:
+        @self.app.get("/", response_class=HTMLResponse)
+        async def index(request: Request):
+            return templates.TemplateResponse("index.html", {"request": request})
+
+        @self.app.get("/status/{job_id}", response_class=HTMLResponse)
+        async def status_page(request: Request, job_id: str):
+            if job_id not in self.jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            return templates.TemplateResponse("status.html", {"request": request, "job": self.jobs[job_id]})
 
         # Health check
         self.app.get("/health")(self.health_check)
@@ -214,28 +221,22 @@ class KYCService:
         """
         try:
             job_id = str(uuid4())
-
-            # Create uploads directory if needed
-            upload_dir = Path("uploads")
-            upload_dir.mkdir(exist_ok=True)
-
             # Save uploaded file
-            document_path = upload_dir / f"{job_id}_{document.filename}"
-
-            async with aiofiles.open(document_path, "wb") as out_file:
-                while content := await document.read(8192):
-                    await out_file.write(content)
+            file_location = Path("uploads") / f"{job_id}_{document.filename}"
+            with open(file_location, "wb") as f:
+                f.write(await document.read())
 
             # Create job status
             self.jobs[job_id] = JobStatus(
                 job_id=job_id,
                 status="submitted",
+                document_path=file_location,
                 created_at=datetime.now(),
                 callback_url=callback_url,
             )
 
             # Start processing in background
-            background_tasks.add_task(self.process_document, job_id, document_path)
+            background_tasks.add_task(self.process_document, job_id, file_location)
 
             return self.jobs[job_id]
 
@@ -258,33 +259,35 @@ class KYCService:
         self, job_id: str, format: str = Query("json", regex="^(json|pdf)$")
     ) -> FileResponse:
         """
-        Get KYC report in requested format
+        Get full KYC report in requested format.
+        Returns either the complete JSON object of the report or the PDF file.
         """
         if job_id not in self.jobs:
+            logger.error(f"Job {job_id} not found")
             raise HTTPException(status_code=404, detail="Job not found")
 
         job = self.jobs[job_id]
-
-        if job.status != "completed":
-            raise HTTPException(
-                status_code=400, detail=f"Report not ready. Current status: {job.status}"
-            )
+        if job.status != "completed" or not job.report:
+            error_msg = f"Report not ready. Current status: {job.status}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=400, detail=error_msg)
 
         try:
             if format == "json":
-                path = self.report_handler._get_report_path(job_id, "json")
-                media_type = "application/json"
-            else:
-                path = self.report_handler._get_report_path(job_id, "pdf")
-                media_type = "application/pdf"
-
-            if not path.exists():
-                raise HTTPException(status_code=404, detail="Report file not found")
-
-            return FileResponse(path=str(path), media_type=media_type, filename=path.name)
-
+                logger.info(f"Returning JSON report for job {job_id}")
+                return JSONResponse(content=job.report.model_dump())
+            elif format == "pdf":
+                pdf_path = self.report_handler._get_report_path(job.report.report_id, "pdf")
+                if not pdf_path.exists():
+                    error_msg = "PDF report file not found"
+                    logger.error(error_msg)
+                    raise HTTPException(status_code=404, detail=error_msg)
+                logger.info(f"Returning PDF report for job {job_id}")
+                return FileResponse(
+                    path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name
+                )
         except Exception as e:
-            logger.error(f"Error retrieving report: {str(e)}")
+            logger.error(f"Error retrieving report for job {job_id}: {str(e)}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving report: {str(e)}"
             )
@@ -348,6 +351,4 @@ class KYCService:
 app = KYCService().app
 
 if __name__ == "__main__":
-    # ...existing code...
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

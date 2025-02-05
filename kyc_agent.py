@@ -21,8 +21,9 @@ from openai.types.beta.threads import Run
 from pydantic import BaseModel, Field
 
 # Configure logging
+log_level = os.getenv("LOG_LEVEL", "DEBUG").upper()
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=getattr(logging, log_level, logging.DEBUG),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
@@ -34,6 +35,8 @@ class DocumentType(Enum):
 
     PASSPORT = "passport"
     NATIONAL_ID = "national_id"
+    VISA = "visa"
+    DRIVERS_LICENSE = "drivers_license"
 
 
 class RiskLevel(Enum):
@@ -54,6 +57,7 @@ class IdentityInfo:
     sex: Optional[str] = None
     alt_name: Optional[str] = None
     place_of_birth: Optional[str] = None
+    places_of_residence: Optional[List[str]] = None
     fathers_name: Optional[str] = None
     mothers_name: Optional[str] = None
     document_type: Optional[str] = None
@@ -104,7 +108,15 @@ class KYCReport(BaseModel):
 
 
 class KYCAgent:
-    """Main KYC agent class that orchestrates the entire workflow"""
+    """Main KYC agent class that orchestrates the entire workflow.
+
+    This class orchestrates the primary steps of KYC:
+    1) Document processing
+    2) Compliance checks
+    3) Adverse media checks
+    4) AI-based analysis of findings
+    5) Generation of a final KYC report
+    """
 
     def __init__(
         self,
@@ -138,7 +150,8 @@ class KYCAgent:
 
     def _create_assistant(self) -> Assistant:
         """
-        Create an OpenAI Assistant specialized in KYC analysis with focus on autonomous reasoning.
+        Create an OpenAI Assistant specialized in KYC analysis with focus on autonomous reasoning
+        for the purposes of compliance and risk management.
         The assistant handles all complex analysis and decision-making internally.
         Function tools are used only for data operations and system tasks.
         """
@@ -153,7 +166,8 @@ class KYCAgent:
                 "version": "0.1.0",
                 "capabilities": "autonomous_analysis",
             },
-            instructions="""You are an expert KYC compliance analyst with deep experience in risk assessment and regulatory compliance. You are tasked with analyzing identity documents, compliance screening results, and adverse media findings to make informed decisions about potential risks and recommended actions.
+            instructions="""You are an expert KYC compliance analyst with deep experience in risk assessment and regulatory compliance. 
+You are tasked with analyzing identity documents, compliance screening results, and adverse media findings to make informed decisions about potential risks and recommended actions.
 Your core responsibilities include:
 
 1. Identity Analysis
@@ -196,11 +210,12 @@ Guidelines for your analysis:
 4. Consider regulatory requirements and risk tolerance
 5. Maintain a balanced perspective between risk sensitivity and practical business needs
 
-You will receive information through our conversation and can request additional data or searches using the provided tools. However, all analysis and reasoning should be performed by you directly - do not defer analysis to external functions.
+You will receive information through our conversation and can request additional data or searches using the provided tools. 
+However, all analysis and reasoning should be performed by you directly in order to make informed judgments and decisions. 
+When you need additional information or searches, explain what you need and why, then use the appropriate tool to request it. 
+After receiving new information, incorporate it into your ongoing analysis.
 
-When you need additional information or searches, explain what you need and why, then use the appropriate tool to request it. After receiving new information, incorporate it into your ongoing analysis.
-
-Your goal is to enable informed compliance decisions through careful analysis and clear communication.
+Your goal is to provide informed compliance decisions about customer risk and KYC/KYB compliance after careful analysis and clear communication.
 
 Format your final assessments with clear sections for:
 - Identity Verification Status 
@@ -212,7 +227,7 @@ Format your final assessments with clear sections for:
         )
 
     async def process_id_document(self, document_path: str) -> IdentityInfo:
-        """Process and extract information from ID document"""
+        """Process and extract information from the provided ID document."""
         logger.info(f"Starting processing of ID document: {document_path}")
 
         try:
@@ -264,7 +279,7 @@ Format your final assessments with clear sections for:
             raise
 
     async def check_compliance_lists(self, identity: IdentityInfo) -> List[ComplianceMatch]:
-        """Check various compliance lists asynchronously"""
+        """Perform compliance checks in parallel against multiple external APIs."""
         logger.info(f"Starting compliance check for {identity.full_name}")
 
         async def check_watchman():
@@ -277,7 +292,7 @@ Format your final assessments with clear sections for:
                         "name": identity.full_name,
                         "country": identity.nationality,
                         "minMatch": "0.85",
-                        "limit": "10",
+                        "limit": "15",
                     },
                     # headers={"Authorization": f"Bearer {self.api_keys['watchman']}"}
                 ) as response:
@@ -377,7 +392,7 @@ Format your final assessments with clear sections for:
             raise
 
     async def check_adverse_media(self, identity: IdentityInfo) -> List[Dict[str, Any]]:
-        """Check adverse media and reputation using Dilisense"""
+        """Check for adverse media related to the given identity."""
         logger.info(f"Starting adverse media check for {identity.full_name}")
 
         try:
@@ -423,9 +438,7 @@ Format your final assessments with clear sections for:
                                 )
 
                     logger.info(f"Found {len(adverse_findings)} adverse media articles")
-                    return (
-                        adverse_findings
-                    )
+                    return adverse_findings
 
         except Exception as e:
             logger.error(f"Error checking adverse media: {str(e)}")
@@ -437,9 +450,11 @@ Format your final assessments with clear sections for:
         compliance_matches: List[ComplianceMatch],
         adverse_media: List[Dict[str, Any]],
     ) -> Tuple[RiskLevel, str, str]:
-        """
-        Use OpenAI Assistant to analyze findings and determine risk level with improved
-        error handling and monitoring.
+        """Analyze identity, compliance, and media findings with the AI Assistant.
+
+        Returns:
+            A tuple containing the risk level, a summary of findings, 
+            and recommendations from the AI Assistant.
         """
         logger.info(f"Starting AI analysis of findings for {identity.full_name}")
 
@@ -516,21 +531,7 @@ Format your final assessments with clear sections for:
     async def _monitor_analysis_run(
         self, thread_id: str, run_id: str, timeout: int = 600
     ) -> Run:
-        """
-        Monitor an analysis run with enhanced state handling and logging.
-
-        Args:
-            thread_id: Thread ID to monitor
-            run_id: Run ID to monitor
-            timeout: Maximum wait time in seconds
-
-        Returns:
-            Completed Run object
-
-        Raises:
-            TimeoutError: If run exceeds timeout
-            RuntimeError: If run fails or expires
-        """
+        """Monitor the AI analysis run, handle status changes, and manage overall flow."""
         logger.info(f"Starting monitoring of run {run_id}")
         start_time = datetime.now()
         last_status = None
@@ -602,9 +603,7 @@ Format your final assessments with clear sections for:
     async def _process_analysis_response(
         self, thread_id: str, run_id: str
     ) -> Tuple[RiskLevel, str, List[Dict[str, Any]]]:
-        """
-        Process the analysis response from the Assistant with enhanced decision logic.
-        """
+        """Parse the AI Assistant's final analysis to extract risk details and recommendations."""
         logger.info(f"Processing analysis response for run {run_id}")
 
         try:
@@ -669,9 +668,7 @@ Format your final assessments with clear sections for:
             raise RuntimeError(f"Analysis processing failed: {str(e)}")
 
     async def _handle_required_actions(self, thread_id: str, run: Run) -> Run:
-        """
-        Handle required actions from a run, particularly tool calls.
-        """
+        """Handle tool calls required by the AI Assistant during analysis."""
         if not run.required_action or not run.required_action.submit_tool_outputs:
             return run
 
@@ -706,7 +703,7 @@ Format your final assessments with clear sections for:
             raise RuntimeError(f"Failed to process tool calls: {str(e)}")
 
     async def _analyze_compliance_results(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze compliance check results with advanced filtering and matching logic"""
+        """Assess compliance matches, categorize them by confidence, and determine any needed search adjustments."""
         matches = args["matches"]
         search_adjustment = args["search_adjustment"]
 
@@ -772,7 +769,7 @@ Format your final assessments with clear sections for:
         }
 
     async def _analyze_media_results(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze adverse media findings with risk categorization"""
+        """Categorize and evaluate adverse media findings based on risk severity."""
         media_results = args["media_results"]
 
         risk_categories = {"high": [], "medium": [], "low": [], "irrelevant": []}
@@ -873,7 +870,7 @@ Format your final assessments with clear sections for:
             return "No significant adverse media findings"
 
     async def generate_report(self, identity: IdentityInfo) -> KYCReport:
-        """Generate complete KYC report with improved structure and error handling"""
+        """Generate a comprehensive KYC report by combining and analyzing all findings."""
         logger.info(f"Generating KYC report for {identity.full_name}")
 
         try:
@@ -925,9 +922,9 @@ Format your final assessments with clear sections for:
 
 Subject Information:
 - Name: {identity.full_name}
-- DOB: {identity.date_of_birth}
+- Date of Birth: {identity.date_of_birth}
 - Nationality: {identity.nationality}
-- Document: {identity.document_number}
+- Document Type: {identity.document_type}
 
 Compliance Matches: {json.dumps([m.model_dump() for m in compliance_matches if isinstance(m, ComplianceMatch)], indent=2)}
 
@@ -942,26 +939,18 @@ Format your response according to the instructions provided."""
 
 
 class ReportHandler:
-    """Handles report generation and storage"""
+    """Handles storage and formatting for generated KYC reports."""
 
     def __init__(self, report_dir: str = "reports"):
         self.report_dir = Path(report_dir)
         self.report_dir.mkdir(exist_ok=True)
 
     def _get_report_path(self, report_id: str, format: str) -> Path:
-        """Get path for report file"""
+        """Get full file path for a report in the given format."""
         return self.report_dir / f"kyc_{report_id}.{format}"
 
     async def save_report(self, report: KYCReport) -> Tuple[Path, Path]:
-        """
-        Save report in both JSON and PDF formats
-
-        Args:
-            report: KYCReport object to save
-
-        Returns:
-            Tuple of paths to JSON and PDF files
-        """
+        """Save the KYC report to both JSON and PDF formats."""
         json_path = self._get_report_path(report.report_id, "json")
         pdf_path = self._get_report_path(report.report_id, "pdf")
 
@@ -975,9 +964,7 @@ class ReportHandler:
         return json_path, pdf_path
 
     async def generate_pdf_report(self, report: KYCReport, output_path: Path) -> None:
-        """
-        Generate PDF version of report with improved formatting
-        """
+        """Generate a nicely formatted PDF version of the KYC report."""
         pdf = FPDF()
         pdf.add_page()
 
@@ -1058,7 +1045,7 @@ class ReportHandler:
 
 
 async def main(document_path: str) -> None:
-    """Main function to run the KYC process"""
+    """Main entry point for running the KYC process."""
     agent = KYCAgent(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         idcheck_api_key=os.getenv("IDCHECK_API_KEY"),

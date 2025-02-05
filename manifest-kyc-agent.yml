@@ -1,0 +1,145 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    kubernetes.io/metadata.name: kyc-agent
+    name: kyc-agent
+  name: kyc-agent
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyc-agent
+  namespace: kyc-agent
+  labels:
+    app: kyc-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kyc-agent
+  template:
+    metadata:
+      labels:
+        app: kyc-agent
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: kyc-agent
+        image: ghcr.io/mssaleh/kyc-agent:main
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: TZ
+          value: "Asia/Dubai"
+        - name: MAX_UPLOAD_SIZE
+          value: "10485760"
+        - name: ALLOWED_EXTENSIONS
+          value: "jpg,jpeg,png"
+        - name: LOG_LEVEL
+          value: "DEBUG"
+        - name: ID_CHECK_URL
+          value: "https://idcheck.nxu.ae/api/id"
+        - name: WATCHMAN_URL
+          value: "https://watchman.nxu.ae/search"
+        - name: DILISENSE_URL
+          value: "https://api.dilisense.com/v1/media/checkIndividual"
+        - name: OPENSANCTIONS_URL
+          value: "https://yente.nxu.ae/match/default"
+        envFrom:
+        - secretRef:
+            name: kyc-agent-secrets
+        volumeMounts:
+        - name: kyc-agent-uploads
+          mountPath: /app/uploads
+        - name: kyc-agent-reports
+          mountPath: /app/reports
+      volumes:
+      - name: kyc-agent-uploads
+        persistentVolumeClaim:
+          claimName: kyc-agent-uploads
+      - name: kyc-agent-reports
+        persistentVolumeClaim:
+          claimName: kyc-agent-reports
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kyc-agent-uploads
+  namespace: kyc-agent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kyc-agent-reports
+  namespace: kyc-agent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kyc-agent
+  namespace: kyc-agent
+spec:
+  selector:
+    app: kyc-agent
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/tls-acme: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,X-Forwarded-For,X-Forwarded-Proto"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "PUT, GET, POST, OPTIONS"
+  name: kyc-agent
+  namespace: kyc-agent
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: kyc.nxu.ae
+      http:
+        paths:
+        - backend:
+            service:
+              name: kyc-agent
+              port:
+                number: 8000
+          path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+      - kyc.nxu.ae
+      secretName: kyc-nxu-ae-tls

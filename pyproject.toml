@@ -1,6 +1,6 @@
 [project]
 name = "kyc-agent"
-version = "0.0.1"
+version = "0.1.0"
 description = "Automated KYC processing service with document analysis and risk assessment"
 authors = [
     {name = "mssaleh",email = "mssaleh@live.com"}
