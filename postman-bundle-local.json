@@ -1,0 +1,105 @@
+{
+  "info": {
+    "name": "KYC Service API",
+    "schema": "http://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:8000/health",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Analyze Document",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "document",
+              "type": "file",
+              "src": "/path/to/sample_document.jpg"
+            },
+            {
+              "key": "callback_url",
+              "type": "text",
+              "value": "http://example.com/api/callback"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://127.0.0.1:8000/api/v1/kyc/analyze",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["api", "v1", "kyc", "analyze"]
+        }
+      }
+    },
+    {
+      "name": "Get Job Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:8000/api/v1/kyc/status/{{job_id}}",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["api", "v1", "kyc", "status", "{{job_id}}"]
+        }
+      }
+    },
+    {
+      "name": "Get JSON Report",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:8000/api/v1/kyc/report/{{job_id}}?format=json",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["api", "v1", "kyc", "report", "{{job_id}}"],
+          "query": [
+            {
+              "key": "format",
+              "value": "json"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get PDF Report",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://127.0.0.1:8000/api/v1/kyc/report/{{job_id}}?format=pdf",
+          "protocol": "http",
+          "host": ["127.0.0.1"],
+          "port": "8000",
+          "path": ["api", "v1", "kyc", "report", "{{job_id}}"],
+          "query": [
+            {
+              "key": "format",
+              "value": "pdf"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -18,7 +18,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles  # added import for StaticFiles
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
@@ -220,15 +220,15 @@ class KYCService:
         callback_url: Optional[str] = Form(None),
     ) -> JobStatus:
         """
-        Submit document for KYC analysis
+        Submit document for KYC analysis.
+        Uses asynchronous file writing for better performance.
         """
         try:
             job_id = str(uuid4())
             # Save uploaded file
             file_location = Path("uploads") / f"{job_id}_{document.filename}"
-            with open(file_location, "wb") as f:
-                f.write(await document.read())
-
+            async with aiofiles.open(file_location, "wb") as f:
+                await f.write(await document.read())
             # Create job status
             self.jobs[job_id] = JobStatus(
                 job_id=job_id,
@@ -330,24 +330,24 @@ class KYCService:
             self.jobs[job_id].completed_at = datetime.now()
 
     async def _send_callback(self, job_id: str):
-        """Send callback notification"""
+        """
+        Send a callback notification for the given job if callback_url is set.
+        """
         job = self.jobs[job_id]
         if not job.callback_url:
             return
-
+        payload = {
+            "job_id": job_id,
+            "status": job.status,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "error": job.error,
+        }
         try:
             async with aiohttp.ClientSession() as session:
-                await session.post(
-                    job.callback_url,
-                    json={
-                        "job_id": job_id,
-                        "status": job.status,
-                        "completed_at": job.completed_at.isoformat(),
-                        "error": job.error,
-                    },
-                )
+                await session.post(job.callback_url, json=payload)
+            logger.info(f"Callback sent successfully for job {job_id}")
         except Exception as e:
-            logger.error(f"Error sending callback: {str(e)}")
+            logger.error(f"Error sending callback for job {job_id}: {str(e)}")
 
 
 # Expose the FastAPI app instance as a global variable

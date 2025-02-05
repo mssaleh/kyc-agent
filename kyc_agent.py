@@ -233,7 +233,8 @@ Format your final assessments with clear sections for:
         try:
             async with aiohttp.ClientSession() as session:
                 logger.debug(f"Opening file: {document_path}")
-                with open(document_path, "rb") as file:
+                async with aiofiles.open(document_path, "rb") as f:
+                    file = await f.read()
                     url = self.api_urls["idcheck"]
                     form_data = aiohttp.FormData()
                     form_data.add_field("image", file)
@@ -667,212 +668,13 @@ Format your final assessments with clear sections for:
             logger.error(f"Error processing analysis: {str(e)}", exc_info=True)
             raise RuntimeError(f"Analysis processing failed: {str(e)}")
 
-    async def _handle_required_actions(self, thread_id: str, run: Run) -> Run:
-        """Handle tool calls required by the AI Assistant during analysis."""
-        if not run.required_action or not run.required_action.submit_tool_outputs:
-            return run
-
-        logger.info(
-            f"Processing {len(run.required_action.submit_tool_outputs.tool_calls)} tool calls"
-        )
-
-        try:
-            tool_outputs = []
-            for tool_call in run.required_action.submit_tool_outputs.tool_calls:
-                logger.debug(
-                    f"Processing tool call {tool_call.id}: {tool_call.function.name}"
-                )
-
-                # Process the tool call and get output
-                output = await self._process_tool_call(tool_call)
-                tool_outputs.append({"tool_call_id": tool_call.id, "output": output})
-
-            # Submit all tool outputs at once
-            logger.info(f"Submitting {len(tool_outputs)} tool outputs")
-            updated_run = self.client.beta.threads.runs.submit_tool_outputs(
-                thread_id=thread_id, run_id=run.id, tool_outputs=tool_outputs
-            )
-
-            logger.debug(
-                f"Tool outputs submitted successfully, new run status: {updated_run.status}"
-            )
-            return updated_run
-
-        except Exception as e:
-            logger.error(f"Error handling required actions: {str(e)}")
-            raise RuntimeError(f"Failed to process tool calls: {str(e)}")
-
-    async def _analyze_compliance_results(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Assess compliance matches, categorize them by confidence, and determine any needed search adjustments."""
-        matches = args["matches"]
-        search_adjustment = args["search_adjustment"]
-
-        # Track analysis decisions
-        decisions = {
-            "confirmed_matches": [],
-            "potential_matches": [],
-            "false_positives": [],
-            "needs_investigation": [],
-        }
-
-        # Analyze each match
-        for match in matches:
-            # Calculate confidence score based on multiple factors
-            confidence = self._calculate_match_confidence(
-                match["match_score"], match["matched_name"], match.get("match_details", {})
-            )
-
-            if confidence > 0.9:
-                decisions["confirmed_matches"].append(
-                    {
-                        "match": match,
-                        "confidence": confidence,
-                        "justification": "High confidence based on strong name match and supporting details",
-                    }
-                )
-            elif confidence > 0.7:
-                decisions["potential_matches"].append(
-                    {
-                        "match": match,
-                        "confidence": confidence,
-                        "justification": "Moderate confidence, requires additional verification",
-                    }
-                )
-            elif confidence < 0.3:
-                decisions["false_positives"].append(
-                    {
-                        "match": match,
-                        "confidence": confidence,
-                        "justification": "Low confidence due to weak matching criteria",
-                    }
-                )
-            else:
-                decisions["needs_investigation"].append(
-                    {
-                        "match": match,
-                        "confidence": confidence,
-                        "justification": "Unclear match quality, needs human review",
-                    }
-                )
-
-        # Determine if search criteria adjustment is needed
-        should_adjust = (
-            len(decisions["confirmed_matches"]) == 0 and search_adjustment["broaden_search"]
-        )
-
-        return {
-            "analysis_results": decisions,
-            "search_adjustment_needed": should_adjust,
-            "adjusted_criteria": (
-                search_adjustment["adjusted_criteria"] if should_adjust else None
-            ),
-        }
-
-    async def _analyze_media_results(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Categorize and evaluate adverse media findings based on risk severity."""
-        media_results = args["media_results"]
-
-        risk_categories = {"high": [], "medium": [], "low": [], "irrelevant": []}
-
-        # Process each media result
-        for result in media_results:
-            risk_assessment = self._assess_media_risk(
-                result["category"],
-                result["headline"],
-                result["body"],
-                result.get("risk_level", "low"),
-            )
-
-            # Add to appropriate risk category with analysis
-            risk_categories[risk_assessment["level"]].append(
-                {
-                    "source": result,
-                    "analysis": risk_assessment["analysis"],
-                    "impact": risk_assessment["impact"],
-                }
-            )
-
-        return {
-            "analysis_results": {
-                "risk_categories": risk_categories,
-                "summary": self._generate_media_summary(risk_categories),
-            }
-        }
-
-    def _calculate_match_confidence(
-        self, match_score: float, matched_name: str, details: Dict
-    ) -> float:
-        """Calculate confidence score for a compliance match using multiple factors"""
-        base_confidence = match_score
-
-        # # Adjust based on name matching quality
-        # name_similarity = self._calculate_name_similarity(matched_name)
-        # base_confidence *= 0.7 + (0.3 * name_similarity)
-
-        # Adjust based on supporting details
-        if details.get("date_of_birth"):
-            base_confidence *= 1.2
-        if details.get("nationality"):
-            base_confidence *= 1.1
-        if details.get("identification_documents"):
-            base_confidence *= 1.15
-
-        # Cap at 1.0
-        return min(base_confidence, 1.0)
-
-    def _assess_media_risk(
-        self, category: str, headline: str, content: str, base_risk: str
-    ) -> Dict[str, Any]:
-        """Assess risk level and impact of media finding"""
-        # Map base risk levels to numerical scores
-        risk_scores = {"high": 0.8, "medium": 0.5, "low": 0.2}
-        score = risk_scores[base_risk]
-
-        # Adjust score based on category severity
-        high_risk_keywords = ["fraud", "corruption", "terrorism", "sanctions"]
-        medium_risk_keywords = ["investigation", "lawsuit", "violation"]
-
-        # Check content for risk indicators
-        content_lower = content.lower()
-        if any(keyword in content_lower for keyword in high_risk_keywords):
-            score = min(score * 1.5, 1.0)
-        elif any(keyword in content_lower for keyword in medium_risk_keywords):
-            score = min(score * 1.2, 1.0)
-
-        # Determine final risk level
-        if score >= 0.7:
-            level = "high"
-            impact = "Significant regulatory and reputational risk"
-        elif score >= 0.4:
-            level = "medium"
-            impact = "Moderate risk requiring enhanced due diligence"
-        else:
-            level = "low"
-            impact = "Minor or negligible risk impact"
-
-        return {
-            "level": level,
-            "score": score,
-            "analysis": f"Risk assessment based on {category} classification and content analysis",
-            "impact": impact,
-        }
-
-    def _generate_media_summary(self, risk_categories: Dict[str, List]) -> str:
-        """Generate summary of media findings"""
-        high_risk_count = len(risk_categories["high"])
-        medium_risk_count = len(risk_categories["medium"])
-
-        if high_risk_count > 0:
-            return f"Found {high_risk_count} high-risk and {medium_risk_count} medium-risk media items requiring immediate attention"
-        elif medium_risk_count > 0:
-            return f"Found {medium_risk_count} medium-risk items requiring further review"
-        else:
-            return "No significant adverse media findings"
-
     async def generate_report(self, identity: IdentityInfo) -> KYCReport:
-        """Generate a comprehensive KYC report by combining and analyzing all findings."""
-        logger.info(f"Generating KYC report for {identity.full_name}")
+        """
+        Generate a comprehensive KYC report by combining identity, compliance, and media findings.
 
+        Runs all checks concurrently and handles potential errors appropriately.
+        """
+        logger.info(f"Generating KYC report for {identity.full_name}")
         try:
             # Run all checks in parallel with timeout
             async with asyncio.TaskGroup() as group:
@@ -902,7 +704,7 @@ Format your final assessments with clear sections for:
 
             # Save report files using ReportHandler
             json_path, pdf_path = await self.report_handler.save_report(report)
-            logger.info(f"Saved report files: JSON={json_path}, PDF={pdf_path}")
+            logger.info(f"Saved report files: JSON at {json_path} and PDF at {pdf_path}")
 
             return report
 
@@ -916,8 +718,12 @@ Format your final assessments with clear sections for:
         compliance_matches: List[ComplianceMatch],
         adverse_media: List[Dict[str, Any]],
     ) -> str:
-        """Prepare structured analysis prompt for the Assistant"""
+        """
+        Prepare a structured prompt for AI analysis including identity, compliance and media details.
 
+        Returns:
+            A formatted string prompt.
+        """
         return f"""Please analyze the following KYC findings:
 
 Subject Information:
