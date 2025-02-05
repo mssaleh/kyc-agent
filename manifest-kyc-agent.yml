@@ -16,7 +16,7 @@ metadata:
   labels:
     app: kyc-agent
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: kyc-agent
@@ -27,6 +27,10 @@ spec:
     spec:
       imagePullSecrets:
       - name: ghcr-secret
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
       - name: kyc-agent
         image: ghcr.io/mssaleh/kyc-agent:main

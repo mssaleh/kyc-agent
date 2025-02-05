@@ -3,6 +3,10 @@
 <head>
     <title>KYC Analysis Service - Status</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Auto refresh every 5 seconds -->
+    <script>
+        setInterval(() => window.location.reload(), 5000);
+    </script>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
@@ -27,6 +31,14 @@
                 </a>
             </div>
             {% endif %}
+        </div>
+        
+        <!-- New auto refresh info and manual refresh button -->
+        <div class="mt-4 text-center">
+            <p class="text-gray-600">This page auto refreshes every 5 seconds.</p>
+            <button onclick="window.location.reload()" class="mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                Refresh Now
+            </button>
         </div>
     </div>
 </body>
