@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -54,15 +54,19 @@ class IdentityInfo:
 
     full_name: str
     date_of_birth: str
+    age: Optional[str] = None
     sex: Optional[str] = None
     alt_name: Optional[str] = None
     place_of_birth: Optional[str] = None
-    places_of_residence: Optional[List[str]] = None
+    places_of_residence: Optional[List[str]] = field(default_factory=list)
     fathers_name: Optional[str] = None
     mothers_name: Optional[str] = None
     document_type: Optional[str] = None
     document_number: Optional[str] = None
+    document_series: Optional[str] = None
+    date_of_issue: Optional[str] = None
     date_of_expiry: Optional[str] = None
+    document_expired: Optional[bool] = None
     nationality: Optional[str] = None
     nationality_code: Optional[str] = None
     personal_number: Optional[str] = None
@@ -70,6 +74,8 @@ class IdentityInfo:
     surname: Optional[str] = None
     issuing_country: Optional[str] = None
     issuing_country_code: Optional[str] = None
+    mrz: Optional[str] = None
+    status: Optional[str] = None
 
 
 class ComplianceMatch(BaseModel):
@@ -259,21 +265,26 @@ Format your final assessments with clear sections for:
                             full_name=data["full_name"],
                             date_of_birth=data["date_of_birth"],
                             # optional fields with get() to handle missing keys
+                            age=data.get("age"),
                             sex=data.get("sex"),
                             alt_name=data.get("alt_name"),
-                            given_names=data.get("given_names"),
-                            surname=data.get("surname"),
                             place_of_birth=data.get("place_of_birth"),
+                            places_of_residence=data.get("places_of_residence", []),
                             fathers_name=data.get("fathers_name"),
                             mothers_name=data.get("mothers_name"),
-                            nationality=data.get("nationality"),
-                            nationality_code=data.get("nationality_code"),
                             document_type=data.get("document_type"),
                             document_number=data.get("document_number"),
+                            document_series=data.get("document_series"),
+                            date_of_issue=data.get("date_of_issue"),
                             date_of_expiry=data.get("date_of_expiry"),
+                            document_expired=data.get("document_expired"),
+                            nationality=data.get("nationality"),
+                            nationality_code=data.get("nationality_code"),
+                            personal_number=data.get("personal_number"),
+                            given_names=data.get("given_names"),
+                            surname=data.get("surname"),
                             issuing_country=data.get("issuing_country"),
                             issuing_country_code=data.get("issuing_country_code"),
-                            personal_number=data.get("personal_number"),
                         )
         except Exception as e:
             logger.error(f"Error processing ID document: {str(e)}")
