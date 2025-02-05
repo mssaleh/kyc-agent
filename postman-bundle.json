@@ -35,6 +35,11 @@
               "key": "callback_url",
               "type": "text",
               "value": "https://example.com/api/callback"
+            },
+            {
+              "key": "email_notification",
+              "type": "text",
+              "value": "user@example.com"
             }
           ]
         },

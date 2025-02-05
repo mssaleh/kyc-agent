@@ -20,8 +20,9 @@ from fastapi import (
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
+from email_service import EmailService
 from kyc_agent import KYCAgent, KYCReport, ReportHandler, logger
 
 # Initialize Jinja2 templates
@@ -79,6 +80,12 @@ class JobStatus(BaseModel):
     # Optional callback configuration
     callback_url: Optional[str] = Field(
         default=None, description="URL to notify when job completes"
+    )
+    email_notification: Optional[str] = Field(
+        default=None, description="Email address to notify when job completes"
+    )
+    email_status: Optional[Dict[str, Any]] = Field(
+        default=None, description="Status of email notification delivery"
     )
 
     # Metadata tracking
@@ -148,6 +155,14 @@ class JobStatus(BaseModel):
             "timestamp": datetime.now().isoformat(),
         }
 
+    def set_email_status(self, success: bool, error: Optional[str] = None) -> None:
+        """Update email notification status"""
+        self.email_status = {
+            "success": success,
+            "timestamp": datetime.now().isoformat(),
+            "error": error,
+        }
+
     def to_response_dict(self) -> Dict[str, Any]:
         """
         Convert to API response format
@@ -171,6 +186,12 @@ class JobStatus(BaseModel):
         if self.report:
             response["report"] = self.report.model_dump()
 
+        if self.email_notification:
+            response["email_notification"] = {
+                "address": self.email_notification,
+                "status": self.email_status,
+            }
+
         return response
 
 
@@ -186,6 +207,7 @@ class KYCService:
         self.setup_routes()
         self.report_handler = ReportHandler()
         self.jobs: Dict[str, JobStatus] = {}
+        self.email_service = EmailService()
 
     def setup_routes(self):
         """Configure API routes"""
@@ -218,6 +240,7 @@ class KYCService:
         background_tasks: BackgroundTasks,
         document: UploadFile = File(...),
         callback_url: Optional[str] = Form(None),
+        email_notification: Optional[EmailStr] = Form(None),
     ) -> JobStatus:
         """
         Submit document for KYC analysis.
@@ -227,15 +250,22 @@ class KYCService:
             job_id = str(uuid4())
             # Save uploaded file
             file_location = Path("uploads") / f"{job_id}_{document.filename}"
+
+            # Validate email if provided
+            if email_notification:
+                logger.info(f"Email notification requested for {email_notification}")
+
+            # Save uploaded file
             async with aiofiles.open(file_location, "wb") as f:
                 await f.write(await document.read())
-            # Create job status
+
+            # Create job status with email notification
             self.jobs[job_id] = JobStatus(
                 job_id=job_id,
                 status="submitted",
                 document_path=file_location,
-                created_at=datetime.now(),
                 callback_url=callback_url,
+                email_notification=email_notification,
             )
 
             # Start processing in background
@@ -318,6 +348,18 @@ class KYCService:
             self.jobs[job_id].status = "completed"
             self.jobs[job_id].completed_at = datetime.now()
             self.jobs[job_id].report = report
+
+            # Send email if configured
+            if self.jobs[job_id].email_notification:
+                try:
+                    pdf_path = self.report_handler._get_report_path(report.report_id, "pdf")
+                    await self.email_service.send_report(
+                        self.jobs[job_id].email_notification, job_id, pdf_path
+                    )
+                    self.jobs[job_id].add_metadata("email_sent", True)
+                except Exception as e:
+                    logger.error(f"Failed to send email notification: {str(e)}")
+                    self.jobs[job_id].add_metadata("email_error", str(e))
 
             # Send callback if configured
             if self.jobs[job_id].callback_url:

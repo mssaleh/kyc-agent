@@ -54,9 +54,41 @@ spec:
           value: "https://api.dilisense.com/v1/media/checkIndividual"
         - name: OPENSANCTIONS_URL
           value: "https://yente.nxu.ae/match/default"
-        envFrom:
-        - secretRef:
-            name: kyc-agent-secrets
+        - name: SENDGRID_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kyc-agent-secrets
+              key: sendgrid-api-key
+        - name: SENDGRID_FROM_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: kyc-agent-secrets
+              key: sendgrid-from-email
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kyc-agent-secrets
+              key: openai-api-key
+        - name: IDCHECK_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kyc-agent-secrets
+              key: idcheck-api-key
+        - name: WATCHMAN_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kyc-agent-secrets
+              key: watchman-api-key
+        - name: DILISENSE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kyc-agent-secrets
+              key: dilisense-api-key
+        - name: OPENSANCTIONS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kyc-agent-secrets
+              key: opensanctions-api-key
         volumeMounts:
         - name: kyc-agent-uploads
           mountPath: /app/uploads
