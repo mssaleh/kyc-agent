@@ -1,8 +1,10 @@
+import base64
 import logging
 import os
 from pathlib import Path
 from typing import Optional, Tuple
 
+import aiofiles
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import (
     Attachment,
@@ -48,13 +50,16 @@ class EmailService:
                 raise FileNotFoundError(f"Report PDF not found at {pdf_path}")
 
             # Read PDF file
-            with open(pdf_path, "rb") as f:
-                file_content = f.read()
+            async with aiofiles.open(pdf_path, "rb") as f:
+                file_content = await f.read()
                 logger.debug(f"Read PDF file of size {len(file_content)} bytes")
+
+            # Encode file content to base64
+            encoded_file_content = base64.b64encode(file_content).decode()
 
             # Create attachment
             attachment = Attachment(
-                FileContent(file_content),
+                FileContent(encoded_file_content),
                 FileName(f"kyc_report_{report_id}.pdf"),
                 FileType("application/pdf"),
                 Disposition("attachment"),
