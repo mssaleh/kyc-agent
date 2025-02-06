@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,6 +20,7 @@ from openai.types.beta import Assistant
 from openai.types.beta.assistant import Assistant as AssistantType
 from openai.types.beta.threads import Run
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
 
 # Configure logging
 log_level = os.getenv("LOG_LEVEL", "DEBUG").upper()
@@ -141,6 +143,7 @@ class KYCAgent:
         watchman_url: str,
         dilisense_url: str,
         opensanctions_url: str,
+        sanctions_list_path: str,
     ):
         logger.info("Initializing KYCAgent")
         self.client = OpenAI(api_key=openai_api_key)
@@ -156,9 +159,35 @@ class KYCAgent:
             "dilisense": dilisense_url,
             "opensanctions": opensanctions_url,
         }
+
+        # Convert sanctions_list_path to Path object and resolve it
+        self.sanctions_list_path = Path(sanctions_list_path).resolve()
+        if not self.sanctions_list_path.exists():
+            raise FileNotFoundError(
+                f"Sanctions list not found at {self.sanctions_list_path}"
+            )
+
         self.assistant = self._create_assistant()
 
         self.report_handler = ReportHandler(report_dir="reports")
+
+    async def _read_sanctions_list(self) -> str:
+        """
+        Asynchronously read the sanctions list content.
+        """
+        try:
+            async with aiofiles.open(self.sanctions_list_path, mode="rb") as f:
+                content = await f.read()
+                reader = PdfReader(BytesIO(content))
+                text = ""
+                for page in reader.pages:
+                    text += page.extract_text()
+                return text
+        except Exception as e:
+            logger.error(
+                f"Error reading sanctions list from {self.sanctions_list_path}: {e}"
+            )
+            raise
 
     def _create_assistant(self) -> Assistant:
         """
@@ -518,12 +547,9 @@ Format your final assessments with clear sections for:
             )
             logger.debug("Analysis message created, starting run")
 
-            # Create a run
-            run = self.client.beta.threads.runs.create(
-                thread_id=thread.id,
-                assistant_id=self.assistant.id,
-                instructions="""
-Analyze the provided KYC findings that we sourced from KYC/AML/CFT services and determine:
+            sanctions_list_content = await self._read_sanctions_list()
+
+            analysis_instructions = f"""Analyze the provided KYC findings that we sourced from KYC/AML/CFT services and determine:
     1. Identity Analysis and Quality of identity verification
     2. Compliance Screening Analysis: Coverting quality of the screening matches, making a judgement on whether they are either:
         - Confirmed matches
@@ -538,7 +564,10 @@ Analyze the provided KYC findings that we sourced from KYC/AML/CFT services and 
     5. KYC Summary: Detailed analysis of key findings within the context of KYC compliance in government agencies
     6. Specific recommendations with clear rationales
 
-Important Note: Watchman screening service returns matches with a score of 1.0 (Highest) even for address only matches. If there is no name, you shall ignore this match.
+Important Notes: 
+1. Watchman screening service returns matches with a score of 1.0 (Highest) even for address only matches. If there is no name, you shall ignore this match.
+2. Please manually cross-check the provided identity (mainly the person's name) against the Local Sanctions List: 
+Local Sanctions List: {sanctions_list_content}
 
 Format response as:
 IDENTITY_VERIFICATION: [quality]
@@ -551,8 +580,15 @@ RISK_SUMMARY: [High-level summary of risk assessment]
 
 KYC_SUMMARY: [Detailed analysis of key findings from the prespective of a compliance officer]
 
-RECOMMENDATIONS: [Specific action items] """,
+RECOMMENDATIONS: [Specific action items] """
+
+            # Create a run
+            run = self.client.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=self.assistant.id,
+                instructions=analysis_instructions,
             )
+
             logger.debug(f"Run created with ID: {run.id}")
 
             # Monitor run with new method
@@ -720,7 +756,9 @@ RECOMMENDATIONS: [Specific action items] """,
 
             missing_sections = [k for k, v in required_sections.items() if not v]
             if missing_sections:
-                raise ValueError(f"Missing required sections: {', '.join(missing_sections)}")
+                raise ValueError(
+                    f"Missing required sections: {', '.join(missing_sections)}"
+                )
 
             logger.info(f"Successfully processed analysis with risk level: {risk_level}")
 
@@ -792,6 +830,21 @@ RECOMMENDATIONS: [Specific action items] """,
             logger.error(f"Error generating report: {str(e)}", exc_info=True)
             raise
 
+    def _read_pdf_content(self, pdf_path: str) -> str:
+        """
+        Read the content of a PDF file and return it as a string.
+        """
+        try:
+
+            reader = PdfReader(pdf_path)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text()
+            return text
+        except Exception as e:
+            logger.error(f"Error reading PDF {pdf_path}: {e}")
+            return f"Error: Could not read PDF content from {pdf_path}"
+
     def _prepare_analysis_prompt(
         self,
         identity: IdentityInfo,
@@ -804,7 +857,7 @@ RECOMMENDATIONS: [Specific action items] """,
         Returns:
             A formatted string prompt.
         """
-        return f"""Please analyze the following KYC findings and provide a structured assessment. Each section should be focused and avoid duplicating information from other sections:
+        prompt = f"""Please analyze the following KYC findings and provide a structured assessment. Each section should be focused and avoid duplicating information from other sections:
 
 Subject Information:
 - Name: {identity.full_name}
@@ -840,6 +893,8 @@ RECOMMENDATIONS:
 [Specific action items and next steps]
 
 Keep each section focused on its specific purpose and avoid duplicating information across sections."""
+
+        return prompt
 
 
 class ReportHandler:
@@ -886,57 +941,59 @@ class ReportHandler:
 
     def _format_markdown_text(self, pdf: FPDF, text: str, max_width: float):
         """Format markdown text with proper styling."""
-        lines = text.split('\n')
+        lines = text.split("\n")
         base_x = pdf.get_x()  # Store original x position once
         list_indent = 0
         in_list = False
         list_type = None  # Track type of list: 'bullet' or 'numbered'
-        
+
         for line in lines:
             # Reset x position at start of each line
             pdf.set_x(base_x)
-            
+
             # Handle markdown headers
-            if line.startswith('###'):
+            if line.startswith("###"):
                 self._set_font(pdf, "heading3")
-                pdf.multi_cell(max_width, 6, line.strip('# '))
+                pdf.multi_cell(max_width, 6, line.strip("# "))
                 self._set_font(pdf, "body")
                 in_list = False
                 list_type = None
-            elif line.startswith('##'):
+            elif line.startswith("##"):
                 self._set_font(pdf, "heading2")
-                pdf.multi_cell(max_width, 7, line.strip('# '))
+                pdf.multi_cell(max_width, 7, line.strip("# "))
                 self._set_font(pdf, "body")
                 in_list = False
                 list_type = None
-            elif line.startswith('#'):
+            elif line.startswith("#"):
                 self._set_font(pdf, "heading1")
-                pdf.multi_cell(max_width, 8, line.strip('# '))
+                pdf.multi_cell(max_width, 8, line.strip("# "))
                 self._set_font(pdf, "body")
                 in_list = False
                 list_type = None
             elif line.strip():  # Non-empty lines
-                if line.startswith(('- ', '* ')):  # Bullet points
-                    if not in_list or list_type != 'bullet':
+                if line.startswith(("- ", "* ")):  # Bullet points
+                    if not in_list or list_type != "bullet":
                         list_indent = 5
-                        list_type = 'bullet'
+                        list_type = "bullet"
                     in_list = True
                     pdf.set_x(base_x + list_indent)
                     content = line[2:]  # Remove bullet point marker
                     self._write_formatted_line(pdf, content, max_width - list_indent)
-                elif re.match(r'^\d+\.', line):  # Numbered lists
-                    if not in_list or list_type != 'numbered':
+                elif re.match(r"^\d+\.", line):  # Numbered lists
+                    if not in_list or list_type != "numbered":
                         list_indent = 8
-                        list_type = 'numbered'
+                        list_type = "numbered"
                     in_list = True
                     pdf.set_x(base_x + list_indent)
-                    match = re.match(r'^(\d+\.)\s*(.*)$', line)
+                    match = re.match(r"^(\d+\.)\s*(.*)$", line)
                     if match:
                         number, content = match.groups()
                         # Write number at consistent position
-                        pdf.cell(8, 5, number + ' ', 0, 0)
+                        pdf.cell(8, 5, number + " ", 0, 0)
                         # Write content with proper indentation
-                        self._write_formatted_line(pdf, content, max_width - list_indent - 8)
+                        self._write_formatted_line(
+                            pdf, content, max_width - list_indent - 8
+                        )
                 else:  # Regular paragraph text
                     in_list = False
                     list_type = None
@@ -949,11 +1006,11 @@ class ReportHandler:
 
     def _write_formatted_line(self, pdf: FPDF, line: str, max_width: float):
         """Handle bold text formatting within a line."""
-        parts = re.split(r'(\*\*.*?\*\*)', line)
+        parts = re.split(r"(\*\*.*?\*\*)", line)
         current_x = pdf.get_x()  # Remember starting position
-        
+
         for part in parts:
-            if part.startswith('**') and part.endswith('**'):
+            if part.startswith("**") and part.endswith("**"):
                 # Bold text
                 bold_text = part[2:-2]  # Remove ** markers
                 self._set_font(pdf, "heading3")  # Use heading3 for bold
@@ -963,13 +1020,13 @@ class ReportHandler:
                 # Regular text
                 if part.strip():
                     pdf.write(5, part)
-        
+
         pdf.ln()  # Move to next line after writing all parts
 
     def _add_identity_table(self, pdf: FPDF, report: KYCReport):
         """Add identity information in a structured table format."""
         self._set_font(pdf, "table_header")
-        
+
         # Calculate column widths
         col1_width = 50
         col2_width = pdf.w - 30 - col1_width  # 30 is total margin (15 each side)
@@ -984,7 +1041,10 @@ class ReportHandler:
             ("Nationality", report.identity_info.nationality or "N/A"),
             ("Document Type", report.identity_info.document_type or "N/A"),
             ("Document Number", report.identity_info.document_number or "N/A"),
-            ("Document Status", "Expired" if report.identity_info.document_expired else "Valid"),
+            (
+                "Document Status",
+                "Expired" if report.identity_info.document_expired else "Valid",
+            ),
             ("Risk Level", report.risk_level.upper()),
         ]
 
@@ -1006,23 +1066,23 @@ class ReportHandler:
             "Screening Summary": "Screening Summary",
             "Risk Summary": "Risk Assessment Summary",
             "KYC Summary": "KYC Assessment",
-            "Recommendations": "Recommended Actions"
+            "Recommendations": "Recommended Actions",
         }
 
         display_title = section_titles.get(title, title)
-        
+
         self._set_font(pdf, "heading2")
         pdf.cell(0, 10, display_title, 0, 1)
         pdf.ln(2)
-        
+
         self._set_font(pdf, "body")
         # Remove any AI section markers from the content
         cleaned_content = re.sub(
-            r'(IDENTITY_VERIFICATION|MATCH_QUALITY|SCREENING_SUMMARY|RISK_LEVEL|RISK_SUMMARY|KYC_SUMMARY|RECOMMENDATIONS):\s*',
-            '',
-            content
+            r"(IDENTITY_VERIFICATION|MATCH_QUALITY|SCREENING_SUMMARY|RISK_LEVEL|RISK_SUMMARY|KYC_SUMMARY|RECOMMENDATIONS):\s*",
+            "",
+            content,
         )
-        
+
         if cleaned_content:
             self._format_markdown_text(pdf, cleaned_content, pdf.w - 30)
         else:
@@ -1039,19 +1099,14 @@ class ReportHandler:
         pdf.ln(2)
 
         # Define column widths as percentages of page width
-        col_widths = {
-            'source': 40,
-            'score': 20,
-            'name': 50,
-            'details': 70
-        }
+        col_widths = {"source": 40, "score": 20, "name": 50, "details": 70}
 
         # Table headers
         self._set_font(pdf, "table_header")
-        pdf.cell(col_widths['source'], 7, "Source", 1)
-        pdf.cell(col_widths['score'], 7, "Score", 1)
-        pdf.cell(col_widths['name'], 7, "Matched Name", 1)
-        pdf.cell(col_widths['details'], 7, "Additional Details", 1)
+        pdf.cell(col_widths["source"], 7, "Source", 1)
+        pdf.cell(col_widths["score"], 7, "Score", 1)
+        pdf.cell(col_widths["name"], 7, "Matched Name", 1)
+        pdf.cell(col_widths["details"], 7, "Additional Details", 1)
         pdf.ln()
 
         # Table rows
@@ -1065,7 +1120,7 @@ class ReportHandler:
                 details.append(f"Nationalities: {', '.join(match.matched_nationalities)}")
             if match.risk_category:
                 details.append(f"Risk: {match.risk_category}")
-            
+
             details_text = "\n".join(details)
             # Calculate required height for details column
             lines = len(details)
@@ -1073,18 +1128,18 @@ class ReportHandler:
 
             # Print row with multi-line support
             current_y = pdf.get_y()
-            
-            pdf.cell(col_widths['source'], row_height, str(match.source), 1)
-            pdf.cell(col_widths['score'], row_height, f"{match.match_score:.2f}", 1)
-            pdf.cell(col_widths['name'], row_height, str(match.matched_name), 1)
-            
+
+            pdf.cell(col_widths["source"], row_height, str(match.source), 1)
+            pdf.cell(col_widths["score"], row_height, f"{match.match_score:.2f}", 1)
+            pdf.cell(col_widths["name"], row_height, str(match.matched_name), 1)
+
             # Save position
             x_pos = pdf.get_x()
             y_pos = pdf.get_y()
-            
+
             # Print details in multi-line cell
-            pdf.multi_cell(col_widths['details'], row_height/lines, details_text, 1)
-            
+            pdf.multi_cell(col_widths["details"], row_height / lines, details_text, 1)
+
             # Restore position for next row
             pdf.set_xy(15, y_pos + row_height)
 
@@ -1100,39 +1155,39 @@ class ReportHandler:
         pdf.ln(2)
 
         # Define column widths
-        col_widths = {
-            'date': 30,
-            'category': 40,
-            'headline': 110
-        }
+        col_widths = {"date": 30, "category": 40, "headline": 110}
 
         # Table headers
         self._set_font(pdf, "table_header")
-        pdf.cell(col_widths['date'], 7, "Date", 1)
-        pdf.cell(col_widths['category'], 7, "Category", 1)
-        pdf.cell(col_widths['headline'], 7, "Headline", 1)
+        pdf.cell(col_widths["date"], 7, "Date", 1)
+        pdf.cell(col_widths["category"], 7, "Category", 1)
+        pdf.cell(col_widths["headline"], 7, "Headline", 1)
         pdf.ln()
 
         # Table rows
         self._set_font(pdf, "table_cell")
         for item in media:
             # Format date
-            date_str = datetime.fromisoformat(item['timestamp']).strftime('%Y-%m-%d') if 'timestamp' in item else 'N/A'
-            
+            date_str = (
+                datetime.fromisoformat(item["timestamp"]).strftime("%Y-%m-%d")
+                if "timestamp" in item
+                else "N/A"
+            )
+
             # Print row with date and category
             pdf.cell(0, 7, f"Date: {date_str}", 1, 1)
             pdf.cell(0, 7, f"Category: {item.get('category', 'N/A')}", 1, 1)
-            
+
             # Print headline
-            headline = item.get('headline', 'Untitled')
+            headline = item.get("headline", "Untitled")
             pdf.multi_cell(0, 7, f"Headline: {headline}", 1)
-            
+
             # Add source link if available
-            if item.get('source_link'):
+            if item.get("source_link"):
                 pdf.set_text_color(0, 0, 255)  # Blue color for links
                 pdf.cell(0, 7, f"Source: {item['source_link']}", 1, 1)
                 pdf.set_text_color(0, 0, 0)  # Reset to black
-            
+
             # Add spacing between entries
             pdf.ln(5)
 
@@ -1161,7 +1216,9 @@ class ReportHandler:
         self._add_identity_table(pdf, report)
 
         # Main Sections
-        self._add_section(pdf, "Identity Verification Assessment", report.identity_verification)
+        self._add_section(
+            pdf, "Identity Verification Assessment", report.identity_verification
+        )
         self._add_section(pdf, "Compliance Match Assessment", report.match_quality)
         self._add_section(pdf, "Screening Summary", report.screening_summary)
         self._add_section(pdf, "Risk Assessment Summary", report.risk_summary)
@@ -1171,7 +1228,7 @@ class ReportHandler:
         # Add a page break and detailed findings only if there are findings to show
         if report.compliance_matches or report.adverse_media:
             pdf.add_page()
-            
+
             # Add a "Detailed Findings" heading
             self._set_font(pdf, "heading1")
             pdf.cell(0, 15, "Detailed Findings", 0, 1, "C")
@@ -1187,6 +1244,23 @@ class ReportHandler:
 
 async def main(document_path: str) -> None:
     """Main entry point for running the KYC process."""
+    # Get the application's root directory
+    app_root = Path(__file__).parent.resolve()
+
+    # Resolve sanctions list path
+    sanctions_list_path = os.getenv("SANCTIONS_LIST_PATH", "lists/UAE_08012025.pdf")
+    if not Path(sanctions_list_path).is_absolute():
+        sanctions_list_path = (app_root / sanctions_list_path).resolve()
+
+    # Ensure the sanctions list exists
+    if not Path(sanctions_list_path).exists():
+        raise FileNotFoundError(f"Sanctions list not found at {sanctions_list_path}")
+
+    # Resolve the document path
+    document_path = Path(document_path).resolve()
+    if not document_path.exists():
+        raise FileNotFoundError(f"Document not found at {document_path}")
+
     agent = KYCAgent(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         idcheck_api_key=os.getenv("IDCHECK_API_KEY"),
@@ -1201,12 +1275,12 @@ async def main(document_path: str) -> None:
         opensanctions_url=os.getenv(
             "OPENSANCTIONS_URL", "https://api.opensanctions.org/match/default"
         ),
+        sanctions_list_path=str(sanctions_list_path),
     )
 
     try:
-        # Process ID document
-        identity = await agent.process_id_document(document_path)
-
+        # Process ID document - use string representation of Path
+        identity = await agent.process_id_document(str(document_path))
         # Generate report
         report = await agent.generate_report(identity)
 

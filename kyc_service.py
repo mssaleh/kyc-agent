@@ -43,6 +43,7 @@ agent = KYCAgent(
     opensanctions_url=os.getenv(
         "OPENSANCTIONS_URL", "https://api.opensanctions.org/match/default"
     ),
+    sanctions_list_path=os.getenv("SANCTIONS_LIST_PATH", "lists/UAE_08012025.pdf"),
 )
 
 
