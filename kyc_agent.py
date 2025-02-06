@@ -538,6 +538,8 @@ Analyze the provided KYC findings that we sourced from KYC/AML/CFT services and 
     5. KYC Summary: Detailed analysis of key findings within the context of KYC compliance in government agencies
     6. Specific recommendations with clear rationales
 
+Important Note: Watchman screening service returns matches with a score of 1.0 (Highest) even for address only matches. If there is no name, you shall ignore this match.
+
 Format response as:
 IDENTITY_VERIFICATION: [quality]
 
@@ -1028,7 +1030,7 @@ class ReportHandler:
         pdf.ln(5)
 
     def _add_compliance_matches(self, pdf: FPDF, matches: List[ComplianceMatch]):
-        """Add compliance matches section with proper formatting."""
+        """Add compliance matches section with proper formatting using tables."""
         if not matches:
             return
 
@@ -1036,27 +1038,60 @@ class ReportHandler:
         pdf.cell(0, 10, "Compliance Matches", 0, 1)
         pdf.ln(2)
 
+        # Define column widths as percentages of page width
+        col_widths = {
+            'source': 40,
+            'score': 20,
+            'name': 50,
+            'details': 70
+        }
+
+        # Table headers
+        self._set_font(pdf, "table_header")
+        pdf.cell(col_widths['source'], 7, "Source", 1)
+        pdf.cell(col_widths['score'], 7, "Score", 1)
+        pdf.cell(col_widths['name'], 7, "Matched Name", 1)
+        pdf.cell(col_widths['details'], 7, "Additional Details", 1)
+        pdf.ln()
+
+        # Table rows
+        self._set_font(pdf, "table_cell")
         for match in matches:
-            self._set_font(pdf, "heading3")
-            pdf.cell(0, 7, f"Match from {match.source}", 0, 1)
-            
-            self._set_font(pdf, "body")
-            pdf.multi_cell(0, 5, f"Match Score: {match.match_score:.2f}")
-            pdf.multi_cell(0, 5, f"Matched Name: {match.matched_name}")
-            
+            # Calculate row height based on content
+            details = []
             if match.matched_date_of_birth:
-                pdf.multi_cell(0, 5, f"Date of Birth: {match.matched_date_of_birth}")
-            
+                details.append(f"DoB: {match.matched_date_of_birth}")
             if match.matched_nationalities:
-                pdf.multi_cell(0, 5, f"Nationalities: {', '.join(match.matched_nationalities)}")
-            
+                details.append(f"Nationalities: {', '.join(match.matched_nationalities)}")
             if match.risk_category:
-                pdf.multi_cell(0, 5, f"Risk Category: {match.risk_category}")
+                details.append(f"Risk: {match.risk_category}")
             
-            pdf.ln(5)
+            details_text = "\n".join(details)
+            # Calculate required height for details column
+            lines = len(details)
+            row_height = max(7, lines * 5)  # Minimum 7, or 5 per line
+
+            # Print row with multi-line support
+            current_y = pdf.get_y()
+            
+            pdf.cell(col_widths['source'], row_height, str(match.source), 1)
+            pdf.cell(col_widths['score'], row_height, f"{match.match_score:.2f}", 1)
+            pdf.cell(col_widths['name'], row_height, str(match.matched_name), 1)
+            
+            # Save position
+            x_pos = pdf.get_x()
+            y_pos = pdf.get_y()
+            
+            # Print details in multi-line cell
+            pdf.multi_cell(col_widths['details'], row_height/lines, details_text, 1)
+            
+            # Restore position for next row
+            pdf.set_xy(15, y_pos + row_height)
+
+        pdf.ln(5)
 
     def _add_adverse_media(self, pdf: FPDF, media: List[Dict[str, Any]]):
-        """Add adverse media section with proper formatting."""
+        """Add adverse media section with simplified formatting (headlines and links only)."""
         if not media:
             return
 
@@ -1064,19 +1099,44 @@ class ReportHandler:
         pdf.cell(0, 10, "Adverse Media Findings", 0, 1)
         pdf.ln(2)
 
+        # Define column widths
+        col_widths = {
+            'date': 30,
+            'category': 40,
+            'headline': 110
+        }
+
+        # Table headers
+        self._set_font(pdf, "table_header")
+        pdf.cell(col_widths['date'], 7, "Date", 1)
+        pdf.cell(col_widths['category'], 7, "Category", 1)
+        pdf.cell(col_widths['headline'], 7, "Headline", 1)
+        pdf.ln()
+
+        # Table rows
+        self._set_font(pdf, "table_cell")
         for item in media:
-            self._set_font(pdf, "heading3")
-            pdf.multi_cell(0, 7, item.get("headline", "Untitled"))
+            # Format date
+            date_str = datetime.fromisoformat(item['timestamp']).strftime('%Y-%m-%d') if 'timestamp' in item else 'N/A'
             
-            self._set_font(pdf, "body")
-            pdf.multi_cell(0, 5, f"Risk Level: {item.get('risk_level', 'N/A').upper()}")
-            pdf.multi_cell(0, 5, f"Category: {item.get('category', 'N/A')}")
+            # Print row with date and category
+            pdf.cell(0, 7, f"Date: {date_str}", 1, 1)
+            pdf.cell(0, 7, f"Category: {item.get('category', 'N/A')}", 1, 1)
             
-            if item.get("body"):
-                pdf.ln(2)
-                pdf.multi_cell(0, 5, item["body"])
+            # Print headline
+            headline = item.get('headline', 'Untitled')
+            pdf.multi_cell(0, 7, f"Headline: {headline}", 1)
             
+            # Add source link if available
+            if item.get('source_link'):
+                pdf.set_text_color(0, 0, 255)  # Blue color for links
+                pdf.cell(0, 7, f"Source: {item['source_link']}", 1, 1)
+                pdf.set_text_color(0, 0, 0)  # Reset to black
+            
+            # Add spacing between entries
             pdf.ln(5)
+
+        pdf.ln(5)
 
     async def generate_pdf_report(self, report: KYCReport, output_path: Path) -> None:
         """Generate a professionally formatted PDF version of the KYC report."""
