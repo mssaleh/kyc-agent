@@ -62,6 +62,7 @@ class IdentityInfo:
     fathers_name: Optional[str] = None
     mothers_name: Optional[str] = None
     document_type: Optional[str] = None
+    document_class: Optional[str] = None
     document_number: Optional[str] = None
     document_series: Optional[str] = None
     date_of_issue: Optional[str] = None
@@ -74,8 +75,9 @@ class IdentityInfo:
     surname: Optional[str] = None
     issuing_country: Optional[str] = None
     issuing_country_code: Optional[str] = None
-    mrz: Optional[str] = None
+    mrz: Optional[dict] = None
     status: Optional[str] = None
+    mrz_conflict: Optional[bool] = None
 
 
 class ComplianceMatch(BaseModel):
@@ -99,11 +101,15 @@ class KYCReport(BaseModel):
     created_at: str = Field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
-    identity_info: IdentityInfo
     risk_level: str = Field(default_factory=lambda: RiskLevel.LOW.value)
+    identity_info: IdentityInfo
+    identity_verification: str = ""
+    match_quality: str = ""
+    screening_summary: str = ""
+    risk_summary: str
+    kyc_summary: str = ""
     compliance_matches: List[ComplianceMatch]
     adverse_media: List[Dict[str, Any]]
-    risk_summary: str
     recommendations: str
 
     class Config:
@@ -176,19 +182,26 @@ class KYCAgent:
 You are tasked with analyzing identity documents, compliance screening results, and adverse media findings to make informed decisions about potential risks and recommended actions.
 Your core responsibilities include:
 
-1. Identity Analysis
+1. Identity Analysis and Quality of identity verification
     - Evaluate the authenticity and completeness of provided identity information 
     - Identify potential discrepancies or red flags in identity documents
     - Consider the reliability and jurisdiction of document issuance
+    - Assess whether the ID document meets regulatory requirements. 
+      For example, the field "Status" indicates the Success of Failure of document recognition, while the field "mrz_conflict" indicates a conflict between MRZ data and printed data, potentially a sign of tampering or fake ID.
 
 2. Compliance Screening Analysis
-    - Evaluate potential matches against sanctions and watchlists, considering:
-        * Name similarity and variations
-        * Supporting identifiers (DOB, nationality, etc.)
-        * Quality and recency of data sources
-        * Context and severity of listings
-    - Make reasoned judgments about false positives vs true matches
-    - Document your analytical process and justification
+    A. Evaluate potential matches against sanctions and watchlists, considering:
+        - Quality of the screening matches, making a judgement on whether they are either:
+            - Confirmed matches
+            - Probable matches
+            - Possible matches
+            - False positives
+            - Items needing further investigation
+            - False negatives
+        - Name popularity, similarity and variations
+        - Supporting identifiers (DOB, nationality, etc.)
+        - Context and severity of listings
+    B. Document your analytical process and justification
 
 3. Risk Assessment Strategy
     - Dynamically adapt search strategies based on initial findings
@@ -273,6 +286,7 @@ Format your final assessments with clear sections for:
                             fathers_name=data.get("fathers_name"),
                             mothers_name=data.get("mothers_name"),
                             document_type=data.get("document_type"),
+                            document_class=data.get("document_class"),
                             document_number=data.get("document_number"),
                             document_series=data.get("document_series"),
                             date_of_issue=data.get("date_of_issue"),
@@ -461,14 +475,29 @@ Format your final assessments with clear sections for:
         identity: IdentityInfo,
         compliance_matches: List[ComplianceMatch],
         adverse_media: List[Dict[str, Any]],
-    ) -> Tuple[RiskLevel, str, str]:
+    ) -> Tuple[RiskLevel, str, str, str, str, str, str]:
         """Analyze identity, compliance, and media findings with the AI Assistant.
 
         Returns:
-            A tuple containing the risk level, a summary of findings,
-            and recommendations from the AI Assistant.
+            A tuple containing:
+            - risk_level (RiskLevel)
+            - identity_verification (str)
+            - match_quality (str)
+            - summary (str)
+            - recommendations (str)
+            - structured_findings (List[Dict[str, Any]])
         """
         logger.info(f"Starting AI analysis of findings for {identity.full_name}")
+
+        if not compliance_matches:
+            logger.warning(
+                "No compliance matches were provided; proceeding with empty list."
+            )
+            compliance_matches = []
+
+        if adverse_media is None:
+            logger.warning("Adverse media data is None; setting to empty list.")
+            adverse_media = []
 
         try:
             logger.debug("Creating thread for analysis")
@@ -494,29 +523,33 @@ Format your final assessments with clear sections for:
                 thread_id=thread.id,
                 assistant_id=self.assistant.id,
                 instructions="""
-                Analyze the provided KYC findings that we sourced from KYC/AML/CFT services and determine:
-                1. Quality of identity verification
-                2. Quality of the screening matches, making a judgement on whether they are either:
-                    - Confirmed matches
-                    - Probable matches
-                    - Possible matches
-                    - False positives
-                    - Items needing further investigation
-                    - False negatives
-                3. Overall risk level (LOW/MEDIUM/HIGH/CRITICAL)
-                2. Detailed risk justification
-                3. Specific recommendations
-                
-                Format response as:
-                IDENTITY_VERIFICATION: [quality]
+Analyze the provided KYC findings that we sourced from KYC/AML/CFT services and determine:
+    1. Identity Analysis and Quality of identity verification
+    2. Compliance Screening Analysis: Coverting quality of the screening matches, making a judgement on whether they are either:
+        - Confirmed matches
+        - Probable matches
+        - Possible matches
+        - False positives
+        - Items needing further investigation
+        - False negatives
+        - Whether they are relevant to the KYC process and the subject's risk profile
+    3. Overall risk level (LOW/MEDIUM/HIGH/CRITICAL) with justification
+    4. Risk Assessment from the perspective of a compliance officer in a government agency issuing business licenses
+    5. KYC Summary: Detailed analysis of key findings within the context of KYC compliance in government agencies
+    6. Specific recommendations with clear rationales
 
-                MATCH_QUALITY: [quality]
+Format response as:
+IDENTITY_VERIFICATION: [quality]
 
-                RISK_LEVEL: [level]
-                
-                SUMMARY: [Detailed analysis of key findings]
-                
-                RECOMMENDATIONS: [Specific action items] """,
+SCREENING_SUMMARY: [compliance screening and adverse media screening summary]
+
+RISK_LEVEL: [level]
+
+RISK_SUMMARY: [High-level summary of risk assessment]
+
+KYC_SUMMARY: [Detailed analysis of key findings from the prespective of a compliance officer]
+
+RECOMMENDATIONS: [Specific action items] """,
             )
             logger.debug(f"Run created with ID: {run.id}")
 
@@ -525,12 +558,26 @@ Format your final assessments with clear sections for:
             logger.info("Run completed successfully")
 
             # Process response with new method
-            risk_level, summary, recommendations, structured_findings = (
-                await self._process_analysis_response(thread.id, run.id)
-            )
+            (
+                risk_level,
+                identity_verification,
+                screening_summary,
+                match_quality,
+                risk_summary,
+                kyc_summary,
+                recommendations,
+            ) = await self._process_analysis_response(thread.id, run.id)
             logger.info(f"Analysis processed: risk level {risk_level}")
 
-            return risk_level, summary, recommendations, structured_findings
+            return (
+                risk_level,
+                identity_verification,
+                screening_summary,
+                match_quality,
+                risk_summary,
+                kyc_summary,
+                recommendations,
+            )
 
         except TimeoutError as e:
             logger.error("Analysis run timed out", exc_info=True)
@@ -614,8 +661,11 @@ Format your final assessments with clear sections for:
 
     async def _process_analysis_response(
         self, thread_id: str, run_id: str
-    ) -> Tuple[RiskLevel, str, List[Dict[str, Any]]]:
-        """Parse the AI Assistant's final analysis to extract risk details and recommendations."""
+    ) -> Tuple[RiskLevel, str, str, str, str, str, str]:
+        """
+        Parse the AI Assistant's final analysis to extract risk details and recommendations.
+        Uses strict section parsing to prevent content duplication.
+        """
         logger.info(f"Processing analysis response for run {run_id}")
 
         try:
@@ -624,59 +674,66 @@ Format your final assessments with clear sections for:
                 thread_id=thread_id, order="desc", limit=10  # Get recent context
             )
 
-            # Extract assistant's analysis
+            # Get the latest assistant message
             analysis_content = ""
-            findings = []
-
             for message in messages.data:
                 if message.role == "assistant":
                     # Process each content item
                     for content in message.content:
                         if content.type == "text":
                             analysis_content = content.text.value
+                            logger.debug(f"Extracted analysis content: {analysis_content}")
+                            break
+                    break
 
-                        # Handle function call results
-                        if getattr(content, "function_call", None):
-                            findings.append(json.loads(content.function_call.arguments))
+            # Define a helper function to extract sections
+            def extract_section(section_name: str) -> str:
+                pattern = f"{section_name}:\\s*(.*?)(?=(?:IDENTITY_VERIFICATION|MATCH_QUALITY|SCREENING_SUMMARY|RISK_LEVEL|RISK_SUMMARY|KYC_SUMMARY|RECOMMENDATIONS):|$)"
+                match = re.search(pattern, analysis_content, re.DOTALL)
+                return match.group(1).strip() if match else ""
 
-            # Parse the structured analysis response
-            risk_section = re.search(r"RISK_LEVEL:\s*(\w+)", analysis_content)
-            if not risk_section:
-                raise ValueError("Missing risk assessment in analysis")
+            # Extract each section with clear boundaries
+            risk_level_str = extract_section("RISK_LEVEL")
+            identity_verification = extract_section("IDENTITY_VERIFICATION")
+            screening_summary = extract_section("SCREENING_SUMMARY")
+            match_quality = extract_section("MATCH_QUALITY")
+            risk_summary = extract_section("RISK_SUMMARY")
+            kyc_summary = extract_section("KYC_SUMMARY")
+            recommendations = extract_section("RECOMMENDATIONS")
 
-            risk_level = RiskLevel[risk_section.group(1).upper()]
-            logger.debug(f"Extracted risk level: {risk_level}")
+            try:
+                risk_level = RiskLevel[risk_level_str.upper()]
+            except (KeyError, AttributeError):
+                logger.error(f"Invalid risk level: {risk_level_str}")
+                risk_level = RiskLevel.HIGH  # Default to HIGH if parsing fails
 
-            # Extract key sections using regex
-            summary_section = re.search(
-                r"SUMMARY:(.*?)(?=RECOMMENDATIONS:|$)", analysis_content, re.DOTALL
+            # Validate that required sections are present
+            required_sections = {
+                "Identity Verification": identity_verification,
+                "Screening Summary": screening_summary,
+                "Risk Summary": risk_summary,
+                "KYC Summary": kyc_summary,
+                "Recommendations": recommendations,
+            }
+
+            missing_sections = [k for k, v in required_sections.items() if not v]
+            if missing_sections:
+                raise ValueError(f"Missing required sections: {', '.join(missing_sections)}")
+
+            logger.info(f"Successfully processed analysis with risk level: {risk_level}")
+
+            return (
+                risk_level,
+                identity_verification,
+                screening_summary,
+                match_quality,
+                risk_summary,
+                kyc_summary,
+                recommendations,
             )
-            recommendations_section = re.search(
-                r"RECOMMENDATIONS:(.*?)(?=$)", analysis_content, re.DOTALL
-            )
-
-            if not summary_section or not recommendations_section:
-                raise ValueError("Missing required analysis sections")
-
-            summary = summary_section.group(1).strip()
-            logger.debug(f"Extracted summary: {summary}")
-            recommendations = recommendations_section.group(1).strip()
-            logger.debug(f"Extracted recommendations: {recommendations}")
-
-            # Process any function-generated findings
-            structured_findings = []
-            for finding in findings:
-                if "analysis_results" in finding:
-                    structured_findings.extend(finding["analysis_results"])
-            logger.debug(f"Extracted structured findings: {structured_findings}")
-
-            logger.info(f"Processed analysis with risk level: {risk_level}")
-            logger.info(f"Found {len(structured_findings)} structured findings")
-
-            return risk_level, summary, recommendations, structured_findings
 
         except Exception as e:
-            logger.error(f"Error processing analysis: {str(e)}", exc_info=True)
+            logger.error(f"Error processing analysis response: {str(e)}", exc_info=True)
             raise RuntimeError(f"Analysis processing failed: {str(e)}")
 
     async def generate_report(self, identity: IdentityInfo) -> KYCReport:
@@ -696,14 +753,24 @@ Format your final assessments with clear sections for:
             adverse_media = media_task.result()
 
             # Analyze findings
-            risk_level, risk_summary, recommendations, structured_findings = (
-                await self.analyze_findings(identity, compliance_matches, adverse_media)
-            )
+            (
+                risk_level,
+                identity_verification,
+                screening_summary,
+                match_quality,
+                risk_summary,
+                kyc_summary,
+                recommendations,
+            ) = await self.analyze_findings(identity, compliance_matches, adverse_media)
 
             # Create report
             report = KYCReport(
                 identity_info=identity,
                 risk_level=risk_level,
+                identity_verification=identity_verification,
+                match_quality=match_quality,
+                screening_summary=screening_summary,
+                kyc_summary=kyc_summary,
                 compliance_matches=compliance_matches,
                 adverse_media=adverse_media,
                 risk_summary=risk_summary,
@@ -735,7 +802,7 @@ Format your final assessments with clear sections for:
         Returns:
             A formatted string prompt.
         """
-        return f"""Please analyze the following KYC findings:
+        return f"""Please analyze the following KYC findings and provide a structured assessment. Each section should be focused and avoid duplicating information from other sections:
 
 Subject Information:
 - Name: {identity.full_name}
@@ -747,12 +814,30 @@ Compliance Matches: {json.dumps([m.model_dump() for m in compliance_matches if i
 
 Adverse Media Findings: {json.dumps(adverse_media, indent=2)}
 
-Please provide:
-1. Overall risk level (LOW/MEDIUM/HIGH/CRITICAL)
-2. Detailed analysis of key findings
-3. Specific recommendations for further action
+Please structure your response in the following specific sections without repetition:
 
-Format your response according to the instructions provided."""
+IDENTITY_VERIFICATION:
+[Focused analysis of document authenticity and identity verification results]
+
+MATCH_QUALITY:
+[Assessment of the quality and relevance of compliance matches]
+
+SCREENING_SUMMARY:
+[Overview of compliance screening and adverse media findings]
+
+RISK_LEVEL:
+[Single word: LOW/MEDIUM/HIGH/CRITICAL]
+
+RISK_SUMMARY:
+[Concise assessment of key risk factors]
+
+KYC_SUMMARY:
+[Comprehensive analysis from a compliance perspective]
+
+RECOMMENDATIONS:
+[Specific action items and next steps]
+
+Keep each section focused on its specific purpose and avoid duplicating information across sections."""
 
 
 class ReportHandler:
@@ -761,6 +846,18 @@ class ReportHandler:
     def __init__(self, report_dir: str = "reports"):
         self.report_dir = Path(report_dir)
         self.report_dir.mkdir(exist_ok=True)
+        self._setup_fonts()
+
+    def _setup_fonts(self):
+        """Define font configurations for consistent typography."""
+        self.fonts = {
+            "heading1": {"family": "FiraSans-Medium", "size": 18},
+            "heading2": {"family": "FiraSans-Medium", "size": 14},
+            "heading3": {"family": "FiraSans-Regular", "size": 12},
+            "body": {"family": "FiraSans-Book", "size": 11},
+            "table_header": {"family": "FiraSans-Regular", "size": 11},
+            "table_cell": {"family": "FiraSans-Book", "size": 10},
+        }
 
     def _get_report_path(self, report_id: str, format: str) -> Path:
         """Get full file path for a report in the given format."""
@@ -780,12 +877,213 @@ class ReportHandler:
 
         return json_path, pdf_path
 
+    def _set_font(self, pdf: FPDF, style: str):
+        """Apply font configuration based on style."""
+        font = self.fonts[style]
+        pdf.set_font(font["family"], "", font["size"])
+
+    def _format_markdown_text(self, pdf: FPDF, text: str, max_width: float):
+        """Format markdown text with proper styling."""
+        lines = text.split('\n')
+        base_x = pdf.get_x()  # Store original x position once
+        list_indent = 0
+        in_list = False
+        list_type = None  # Track type of list: 'bullet' or 'numbered'
+        
+        for line in lines:
+            # Reset x position at start of each line
+            pdf.set_x(base_x)
+            
+            # Handle markdown headers
+            if line.startswith('###'):
+                self._set_font(pdf, "heading3")
+                pdf.multi_cell(max_width, 6, line.strip('# '))
+                self._set_font(pdf, "body")
+                in_list = False
+                list_type = None
+            elif line.startswith('##'):
+                self._set_font(pdf, "heading2")
+                pdf.multi_cell(max_width, 7, line.strip('# '))
+                self._set_font(pdf, "body")
+                in_list = False
+                list_type = None
+            elif line.startswith('#'):
+                self._set_font(pdf, "heading1")
+                pdf.multi_cell(max_width, 8, line.strip('# '))
+                self._set_font(pdf, "body")
+                in_list = False
+                list_type = None
+            elif line.strip():  # Non-empty lines
+                if line.startswith(('- ', '* ')):  # Bullet points
+                    if not in_list or list_type != 'bullet':
+                        list_indent = 5
+                        list_type = 'bullet'
+                    in_list = True
+                    pdf.set_x(base_x + list_indent)
+                    content = line[2:]  # Remove bullet point marker
+                    self._write_formatted_line(pdf, content, max_width - list_indent)
+                elif re.match(r'^\d+\.', line):  # Numbered lists
+                    if not in_list or list_type != 'numbered':
+                        list_indent = 8
+                        list_type = 'numbered'
+                    in_list = True
+                    pdf.set_x(base_x + list_indent)
+                    match = re.match(r'^(\d+\.)\s*(.*)$', line)
+                    if match:
+                        number, content = match.groups()
+                        # Write number at consistent position
+                        pdf.cell(8, 5, number + ' ', 0, 0)
+                        # Write content with proper indentation
+                        self._write_formatted_line(pdf, content, max_width - list_indent - 8)
+                else:  # Regular paragraph text
+                    in_list = False
+                    list_type = None
+                    pdf.set_x(base_x)
+                    self._write_formatted_line(pdf, line, max_width)
+            else:  # Empty lines
+                pdf.ln(3)
+                in_list = False
+                list_type = None
+
+    def _write_formatted_line(self, pdf: FPDF, line: str, max_width: float):
+        """Handle bold text formatting within a line."""
+        parts = re.split(r'(\*\*.*?\*\*)', line)
+        current_x = pdf.get_x()  # Remember starting position
+        
+        for part in parts:
+            if part.startswith('**') and part.endswith('**'):
+                # Bold text
+                bold_text = part[2:-2]  # Remove ** markers
+                self._set_font(pdf, "heading3")  # Use heading3 for bold
+                pdf.write(5, bold_text)
+                self._set_font(pdf, "body")
+            else:
+                # Regular text
+                if part.strip():
+                    pdf.write(5, part)
+        
+        pdf.ln()  # Move to next line after writing all parts
+
+    def _add_identity_table(self, pdf: FPDF, report: KYCReport):
+        """Add identity information in a structured table format."""
+        self._set_font(pdf, "table_header")
+        
+        # Calculate column widths
+        col1_width = 50
+        col2_width = pdf.w - 30 - col1_width  # 30 is total margin (15 each side)
+        row_height = 7
+
+        # Define identity information rows
+        identity_rows = [
+            ("Report ID", report.report_id),
+            ("Created At", report.created_at),
+            ("Full Name", report.identity_info.full_name),
+            ("Date of Birth", report.identity_info.date_of_birth),
+            ("Nationality", report.identity_info.nationality or "N/A"),
+            ("Document Type", report.identity_info.document_type or "N/A"),
+            ("Document Number", report.identity_info.document_number or "N/A"),
+            ("Document Status", "Expired" if report.identity_info.document_expired else "Valid"),
+            ("Risk Level", report.risk_level.upper()),
+        ]
+
+        # Draw table
+        for label, value in identity_rows:
+            self._set_font(pdf, "table_header")
+            pdf.cell(col1_width, row_height, label, 1)
+            self._set_font(pdf, "table_cell")
+            pdf.cell(col2_width, row_height, str(value), 1, 1)
+
+        pdf.ln(5)
+
+    def _add_section(self, pdf: FPDF, title: str, content: str):
+        """Add a section with proper formatting and spacing."""
+        # Map AI section names to proper English titles
+        section_titles = {
+            "Identity Verification": "Identity Verification Assessment",
+            "Match Quality": "Compliance Match Assessment",
+            "Screening Summary": "Screening Summary",
+            "Risk Summary": "Risk Assessment Summary",
+            "KYC Summary": "KYC Assessment",
+            "Recommendations": "Recommended Actions"
+        }
+
+        display_title = section_titles.get(title, title)
+        
+        self._set_font(pdf, "heading2")
+        pdf.cell(0, 10, display_title, 0, 1)
+        pdf.ln(2)
+        
+        self._set_font(pdf, "body")
+        # Remove any AI section markers from the content
+        cleaned_content = re.sub(
+            r'(IDENTITY_VERIFICATION|MATCH_QUALITY|SCREENING_SUMMARY|RISK_LEVEL|RISK_SUMMARY|KYC_SUMMARY|RECOMMENDATIONS):\s*',
+            '',
+            content
+        )
+        
+        if cleaned_content:
+            self._format_markdown_text(pdf, cleaned_content, pdf.w - 30)
+        else:
+            pdf.cell(0, 5, "No information available", 0, 1)
+        pdf.ln(5)
+
+    def _add_compliance_matches(self, pdf: FPDF, matches: List[ComplianceMatch]):
+        """Add compliance matches section with proper formatting."""
+        if not matches:
+            return
+
+        self._set_font(pdf, "heading2")
+        pdf.cell(0, 10, "Compliance Matches", 0, 1)
+        pdf.ln(2)
+
+        for match in matches:
+            self._set_font(pdf, "heading3")
+            pdf.cell(0, 7, f"Match from {match.source}", 0, 1)
+            
+            self._set_font(pdf, "body")
+            pdf.multi_cell(0, 5, f"Match Score: {match.match_score:.2f}")
+            pdf.multi_cell(0, 5, f"Matched Name: {match.matched_name}")
+            
+            if match.matched_date_of_birth:
+                pdf.multi_cell(0, 5, f"Date of Birth: {match.matched_date_of_birth}")
+            
+            if match.matched_nationalities:
+                pdf.multi_cell(0, 5, f"Nationalities: {', '.join(match.matched_nationalities)}")
+            
+            if match.risk_category:
+                pdf.multi_cell(0, 5, f"Risk Category: {match.risk_category}")
+            
+            pdf.ln(5)
+
+    def _add_adverse_media(self, pdf: FPDF, media: List[Dict[str, Any]]):
+        """Add adverse media section with proper formatting."""
+        if not media:
+            return
+
+        self._set_font(pdf, "heading2")
+        pdf.cell(0, 10, "Adverse Media Findings", 0, 1)
+        pdf.ln(2)
+
+        for item in media:
+            self._set_font(pdf, "heading3")
+            pdf.multi_cell(0, 7, item.get("headline", "Untitled"))
+            
+            self._set_font(pdf, "body")
+            pdf.multi_cell(0, 5, f"Risk Level: {item.get('risk_level', 'N/A').upper()}")
+            pdf.multi_cell(0, 5, f"Category: {item.get('category', 'N/A')}")
+            
+            if item.get("body"):
+                pdf.ln(2)
+                pdf.multi_cell(0, 5, item["body"])
+            
+            pdf.ln(5)
+
     async def generate_pdf_report(self, report: KYCReport, output_path: Path) -> None:
-        """Generate a nicely formatted PDF version of the KYC report."""
+        """Generate a professionally formatted PDF version of the KYC report."""
         pdf = FPDF()
         pdf.add_page()
 
-        # Add custom fonts with unicode support
+        # Add fonts
         pdf.add_font("FiraSans-Book", "", "fonts/FiraSans-Book.ttf", uni=True)
         pdf.add_font("FiraSans-Medium", "", "fonts/FiraSans-Medium.ttf", uni=True)
         pdf.add_font("FiraSans-Regular", "", "fonts/FiraSans-Regular.ttf", uni=True)
@@ -794,68 +1092,34 @@ class ReportHandler:
         pdf.set_margins(15, 15, 15)
         pdf.set_auto_page_break(auto=True, margin=15)
 
-        # Add report header
-        pdf.set_font("FiraSans-Medium", "", 16)
-        pdf.cell(0, 10, "KYC Report", 0, 1, "C")
+        # Title
+        self._set_font(pdf, "heading1")
+        pdf.cell(0, 15, "Know Your Customer (KYC) Report", 0, 1, "C")
         pdf.ln(5)
 
-        pdf.set_font("FiraSans-Book", "", 12)
+        # Identity Information Table
+        self._add_identity_table(pdf, report)
 
-        def row(label, value):
-            pdf.cell(50, 10, str(label), border=1)
-            pdf.cell(130, 10, str(value), border=1, ln=1)
+        # Main Sections
+        self._add_section(pdf, "Identity Verification Assessment", report.identity_verification)
+        self._add_section(pdf, "Compliance Match Assessment", report.match_quality)
+        self._add_section(pdf, "Screening Summary", report.screening_summary)
+        self._add_section(pdf, "Risk Assessment Summary", report.risk_summary)
+        self._add_section(pdf, "KYC Assessment", report.kyc_summary)
+        self._add_section(pdf, "Recommendations", report.recommendations)
 
-        # Add report metadata and identity info
-        row("Report ID", report.report_id)
-        row("Created At", report.created_at)
-        row("Full Name", report.identity_info.full_name)
-        row("Date of Birth", report.identity_info.date_of_birth)
-        row("Nationality", report.identity_info.nationality)
-        row("Sex", report.identity_info.sex)
-        row("Document Type", report.identity_info.document_type)
-        row("Document Number", report.identity_info.document_number)
-        row("Risk Level", report.risk_level)
-        pdf.ln(5)
+        # Add a page break and detailed findings only if there are findings to show
+        if report.compliance_matches or report.adverse_media:
+            pdf.add_page()
+            
+            # Add a "Detailed Findings" heading
+            self._set_font(pdf, "heading1")
+            pdf.cell(0, 15, "Detailed Findings", 0, 1, "C")
+            pdf.ln(5)
 
-        # Add compliance matches section
-        pdf.set_font("FiraSans-Regular", "", 14)
-        pdf.cell(0, 10, "Compliance Matches", 0, 1, "L")
-        pdf.set_font("FiraSans-Book", "", 12)
-
-        for match in report.compliance_matches:
-            row("Source", match.source)
-            row("Score", match.match_score)
-            row("Matched Name", match.matched_name)
-            if match.matched_date_of_birth:
-                row("Date of Birth", match.matched_date_of_birth)
-            if match.matched_nationalities:
-                row("Nationalities", ", ".join(match.matched_nationalities or []))
-            pdf.ln(2)
-        pdf.ln(5)
-
-        # Add adverse media section
-        pdf.set_font("FiraSans-Regular", "", 14)
-        pdf.cell(0, 10, "Adverse Media", 0, 1, "L")
-        pdf.set_font("FiraSans-Book", "", 12)
-
-        for media in report.adverse_media:
-            row("Headline", media.get("headline"))
-            row("Risk Level", media.get("risk_level"))
-            pdf.ln(2)
-        pdf.ln(5)
-
-        # Add risk assessment
-        pdf.set_font("FiraSans-Regular", "", 14)
-        pdf.cell(0, 10, "Risk Assessment", 0, 1, "L")
-        pdf.set_font("FiraSans-Book", "", 12)
-        pdf.multi_cell(0, 10, report.risk_summary, border=1)
-        pdf.ln(5)
-
-        # Add recommendations
-        pdf.set_font("FiraSans-Regular", "", 14)
-        pdf.cell(0, 10, "Recommendations", 0, 1, "L")
-        pdf.set_font("FiraSans-Book", "", 12)
-        pdf.multi_cell(0, 10, report.recommendations, border=1)
+            # Detailed Findings
+            self._add_compliance_matches(pdf, report.compliance_matches)
+            self._add_adverse_media(pdf, report.adverse_media)
 
         # Save PDF
         pdf.output(str(output_path))
